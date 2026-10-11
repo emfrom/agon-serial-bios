@@ -31,16 +31,18 @@ Other offsets in this range are reserved/unassigned by the definitions in
 `ez80f92.h`. The vector table base is controlled by the CPU's `I` register;
 consult the manual for the active ADL/MADL mode and device-specific details.
 
-The Agon Platform MOS documentation's [Memory map](https://agonplatform.github.io/agon-docs/MOS/#memory-map)
-section was saved locally as `~/opt/Downloads/agon-mos-memory-map.html`. It
-places the Agon eZ80's 8 KiB internal RAM at `0xB7E000–0xB7FFFF` by default;
-`src/main.c` loads the BIOS there before remapping RAM.
-
 The F92 product specification (PS015317-0120, printed pages 190–192) says the
 8 KiB internal SRAM occupies `{RAM_ADDR_U, 0xE000}` through
 `{RAM_ADDR_U, 0xFFFF}` and takes priority over on-chip Flash and memory chip
 selects on overlap. Thus `RAM_ADDR_U = 0` maps SRAM to `0x00E000–0x00FFFF`,
 not to address `0x000000`.
+
+## VSync interrupt at handoff
+
+`src/main.c:bios_handoff()` disables CPU interrupts, clears the pending Port B
+bit 1 edge, and returns PB1 to ordinary input mode before transferring control
+to the BIOS. MOS leaves PB1 configured for rising-edge VSync; this BIOS uses
+UART1 and does not install a VSync handler.
 
 ## UART1 interrupt driver
 
@@ -99,7 +101,13 @@ bios_uart1_tx_put (low-level producer)
 └─ enqueue byte, enable TIE; carry reports a full ts ring
 ```
 
-**Emulator limitation:** the tested Fab Agon Emulator build does not dispatch
-UART1 interrupts (its interrupt scheduler only dispatches UART0). Thus the BIOS
-assembles and links, but UART1 ISR/FIFO behavior requires testing on hardware or
-an emulator build with UART1 interrupt support.
+## Emulator testing
+
+BIOS testing uses a patched Fab Agon Emulator build that correctly identifies
+and dispatches interrupt causes on UART0 and UART1. The patch also advances
+peripherals while the CPU is halted and wakes the CPU when an interrupt is
+accepted. These changes are tracked in
+[Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
+
+The UART1 end-to-end BIOS smoke test reached `BIOS Loaded` over the serial
+link.
