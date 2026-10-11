@@ -14,11 +14,11 @@ static void delay_50ms(void)
     }
 }
 
-#define ONCHIP_RAM_BASE 0xFFE000UL
-#define ONCHIP_MOS_BASE 0xFFE000UL
+#define ONCHIP_RAM_LOAD_BASE 0xB7E000UL
+#define ONCHIP_RAM_EXEC_BASE 0x00E000UL
 #define ONCHIP_RAM_SIZE 8192
 
-void (*__enter_bios)(void) = (void (*)(void))ONCHIP_RAM_BASE;
+void (*__enter_bios)(void) = (void (*)(void))ONCHIP_RAM_EXEC_BASE;
 
 int main(void)
 {
@@ -29,7 +29,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    if (ONCHIP_RAM_SIZE != fread((void *)ONCHIP_MOS_BASE, 1,
+    if (ONCHIP_RAM_SIZE != fread((void *)ONCHIP_RAM_LOAD_BASE, 1,
                                  ONCHIP_RAM_SIZE, f)) {
         fprintf(stderr, "EZ80BIOS.bin must contain exactly %u bytes\n",
                 ONCHIP_RAM_SIZE);
@@ -42,40 +42,51 @@ int main(void)
     puts("Closing MOS\n");
     delay_50ms();
 
-    /* Disable VDI */
-    // VDU 24 disables VDU interrupts via MOS before MOS is shut down.
-    putchar(0x18);
-    fflush(stdout);
+    /* Send VDU 21 directly to the VDP through the MOS RST 10h vector. */
+    __asm__ volatile (
+        "ld a, 21\n\t"
+        "rst 0x10"
+        :
+        :
+        : "a"
+    );
     delay_50ms();
 
-    // Deassert UART0 RTS (the output used for hardware flow control).
-    IO(UART0_MCTL) &= (uint8_t)~0x02;
-    delay_50ms();
 
     // CRITICAL: no MOS calls after this point
 
-    /* Disable device-level interrupts before disabling CPU interrupts. */
+
+    // Turn of UART0. Also deasserts UART0 RTS (the output used for hardware flow control).
+    IO(UART0_MCTL) = 0; 
+    delay_50ms();
+
+    //Leave interrupts off until BIOS has set it's stack up
+    __asm__("di"); 
+    
+    /* Disable device-level interrupts */
     IO(UART0_IER) = 0x00;
+    IO(UART1_IER) = 0x00;
     IO(TMR0_CTL) = 0x00;
     IO(TMR1_CTL) = 0x00;
     IO(TMR2_CTL) = 0x00;
     IO(TMR3_CTL) = 0x00;
     IO(TMR4_CTL) = 0x00;
     IO(TMR5_CTL) = 0x00;
-
     delay_50ms();
 
 
-    //Leave interrupts off until BIOS has set it's stack up
-    __asm__("di"); 
+
+    /* Disable Flash memory-space access before remapping SRAM into page 0. */
+    IO(FLASH_CTRL) &= (uint8_t)~0x08; // FLASH_EN = 0
+    delay_50ms();
     
-    /* Move On-Chip RAM */
-    IO(RAM_ADDR_U) = 0xFF;            //Top of memory map
-    IO(RAM_CTL) = IO(RAM_CTL) | 0xC0; //Ram enabled and default arbitration
+    /* F92 SRAM maps to {RAM_ADDR_U, 0xE000}..{RAM_ADDR_U, 0xFFFF}. */
+    IO(RAM_ADDR_U) = 0x00;
+    IO(RAM_CTL) |= 0x80;              // RAM_EN = 1; other bits are reserved
     delay_50ms();
 
     __enter_bios(); //Will never return
 
-    return EXIT_SUCCESS;
+    return EXIT_FAILURE;
 }
 
