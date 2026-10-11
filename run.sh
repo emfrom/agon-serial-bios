@@ -7,7 +7,7 @@ for tool in socat minicom xterm; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
 done
 
-tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/agon-uart1.XXXXXX")
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/agon-serial-bios.XXXXXX")
 cleanup() {
   if [[ -n ${terminal_pid:-} ]]; then kill "$terminal_pid" 2>/dev/null || true; fi
   if [[ -n ${emulator_pid:-} ]]; then kill "$emulator_pid" 2>/dev/null || true; fi
@@ -39,7 +39,7 @@ pu parity           N
 pu stopbits         1
 EOF
 launch_terminal() {
-  xterm -T "Agon UART1 (${baud} baud, 8N1)" -e env HOME="$tmpdir/minicom-home" \
+  xterm -T "agon-serial-bios UART1 (${baud} baud, 8N1)" -e env HOME="$tmpdir/minicom-home" \
     minicom --device "$tmpdir/terminal" --baudrate "$baud" -8 &
   terminal_pid=$!
 }

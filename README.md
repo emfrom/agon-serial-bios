@@ -1,25 +1,78 @@
-# memtest
+# agon-serial-bios
 
-## eZ80 interrupt-vector reference
+An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 
-The official Zilog eZ80 CPU User Manual (UM007715-0415) is available at
-[Zilog's manual URL](https://www.zilog.com/docs/um0077.pdf) and was downloaded
-locally to `~/opt/Downloads/um0077.pdf` for reference.
+## Project contents
 
-For the eZ80F92 interrupt-vector construction, see the official eZ80F92/eZ80F93
-Product Specification (PS015317-0120), downloaded to
-`~/opt/Downloads/PS0153.pdf`. Its “Interrupt Controller” section (printed
-pages 45–47) specifies that `I` is the Interrupt Page Address Register and
-the interrupting peripheral supplies its fixed 8-bit value on the internal
-`IVECT[7:0]` bus. The table-entry address is `{I[7:0], IVECT[7:0]}`. The ISR's
-16-bit address is stored little-endian at that address and the next byte.
+- `EZ80BIOS.s` implements the UART1 interrupt service routine, RX/TX ring
+  buffers, RTS flow control, and BIOS entry points.
+- `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
+  and transfers execution to it.
+- `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
+  handoff.
+- `build.sh` assembles and links the BIOS, builds the RAM test, and prepares
+  the default emulator SD-card directory.
+- `run.sh` starts the emulator and a Minicom UART terminal connected through a
+  temporary virtual serial pair.
+
+## Build
+
+The build expects the AgonDev toolchain: `ez80-none-elf-as` and
+`ez80-none-elf-ld` in the parent AgonDev `bin/` directory, plus
+`agondev-config` and `make` on `PATH`.
+
+```sh
+./build.sh
+```
+
+This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes) and `bin/ramtest.bin`.
+It also copies both files to `$HOME/.agon-sdcard` and writes an `autoexec.txt`
+that loads and runs the RAM test. Back up any existing files in that directory
+if you need to preserve them.
+
+## Run and test
+
+The runtime script requires `fab-agon-emulator`, `socat`, `minicom`, and
+`xterm` on `PATH`:
+
+```sh
+./run.sh
+```
+
+Optional emulator arguments can be passed through, for example:
+
+```sh
+./run.sh --debugger
+```
+
+The script connects emulator UART1 to Minicom at 115200 baud, 8N1. It starts
+the emulator before the terminal in normal mode. `--no-audio` is passed to the
+emulator at launch.
+
+BIOS testing uses a **patched Fab Agon Emulator** that correctly identifies
+and dispatches interrupt causes on UART0 and UART1. The patch also advances
+peripherals while the CPU is halted and wakes the CPU when an interrupt is
+accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
+
+The UART1 end-to-end BIOS smoke test reached `BIOS Loaded` over the serial
+link.
+
+## eZ80 interrupt and memory references
+
+The official [Zilog eZ80 CPU User Manual (UM007715-0415)](https://www.zilog.com/docs/um0077.pdf)
+describes the CPU interrupt modes. For eZ80F92 interrupt-vector construction,
+see the eZ80F92/eZ80F93 Product Specification (PS015317-0120), “Interrupt
+Controller” section, printed pages 45–47. It specifies that `I` is the
+Interrupt Page Address Register and the interrupting peripheral supplies its
+fixed 8-bit value on the internal `IVECT[7:0]` bus. The table-entry address is
+`{I[7:0], IVECT[7:0]}`; the ISR's 16-bit address is stored little-endian there.
 
 In ADL mode the CPU fetches that 16-bit ISR address, sets `PC[15:0]` to it,
-and runs with `PC[23:16] = 0`; it does not fetch a 24-bit ISR address. In
-Z80 mode, the corresponding table entry is in the MBASE page and the execution
-address is effectively `{MBASE, PC[15:0]}`. See Product Specification Table 12.
+and runs with `PC[23:16] = 0`; it does not fetch a 24-bit ISR address. In Z80
+mode, the corresponding table entry is in the MBASE page and execution is
+effectively at `{MBASE, PC[15:0]}`. See Product Specification Table 12.
 
-The defined eZ80F92 peripheral vector values are:
+Defined eZ80F92 peripheral vector values:
 
 - `0x08` flash; `0x0A`–`0x14` timers 0–5
 - `0x16` RTC; `0x18` UART0; `0x1A` UART1; `0x1C` I²C; `0x1E` SPI
@@ -27,15 +80,15 @@ The defined eZ80F92 peripheral vector values are:
 - `0x40`–`0x4E` Port C bits 0–7
 - `0x50`–`0x5E` Port D bits 0–7
 
-Other offsets in this range are reserved/unassigned by the definitions in
-`ez80f92.h`. The vector table base is controlled by the CPU's `I` register;
-consult the manual for the active ADL/MADL mode and device-specific details.
+Other offsets in this range are reserved or unassigned by `ez80f92.h`. The
+vector table base is controlled by the CPU's `I` register; consult the manual
+for the active ADL/MADL mode and device-specific details.
 
 The F92 product specification (PS015317-0120, printed pages 190–192) says the
 8 KiB internal SRAM occupies `{RAM_ADDR_U, 0xE000}` through
 `{RAM_ADDR_U, 0xFFFF}` and takes priority over on-chip Flash and memory chip
-selects on overlap. Thus `RAM_ADDR_U = 0` maps SRAM to `0x00E000–0x00FFFF`,
-not to address `0x000000`.
+selects on overlap. Thus `RAM_ADDR_U = 0` maps SRAM to `0x00E000–0x00FFFF`, not
+to address `0x000000`.
 
 ## VSync interrupt at handoff
 
@@ -47,14 +100,14 @@ UART1 and does not install a VSync handler.
 ## UART1 interrupt driver
 
 `EZ80BIOS.s` configures UART1 for 115200 8N1 with 16-byte FIFOs and services
-its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; vector table at `0xFB00`,
-just before ring metadata at `0xFC00`). The ISR drains all available RX bytes into
-`bios_rs_ring` and fills the TX FIFO in bursts from `bios_ts_ring`. The 256-byte
-rings reserve one slot to distinguish full from empty, so each holds up to 255
-bytes. RX overflow drops the byte and increments the wrapping
+its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; vector table at `0xFB00`, just
+before ring metadata at `0xFC00`). The ISR drains all available RX bytes into
+`bios_rs_ring` and fills the TX FIFO in bursts from `bios_ts_ring`. The
+256-byte rings reserve one slot to distinguish full from empty, so each holds
+up to 255 bytes. RX overflow drops the byte and increments the wrapping
 `bios_rs_overflow` counter.
 
-The assembly entry points are:
+Assembly entry points:
 
 - `bios_uart1_tx_put`: byte in `A`; carry is set if the TX ring is full. On
   success it queues the byte and enables the TX-empty interrupt.
@@ -101,13 +154,3 @@ bios_uart1_tx_put (low-level producer)
 └─ enqueue byte, enable TIE; carry reports a full ts ring
 ```
 
-## Emulator testing
-
-BIOS testing uses a patched Fab Agon Emulator build that correctly identifies
-and dispatches interrupt causes on UART0 and UART1. The patch also advances
-peripherals while the CPU is halted and wakes the CPU when an interrupt is
-accepted. These changes are tracked in
-[Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
-
-The UART1 end-to-end BIOS smoke test reached `BIOS Loaded` over the serial
-link.
