@@ -15,11 +15,6 @@ __io_xmodem_restore_timer_vector:
 ;; tail-jumps to the regular timer ISR, which performs RETI.L.
 __io_xmodem_start:
 	push af
-	push bc
-	push de
-	push hl
-	push ix
-	push iy
 __io_xmodem_start_scan:
 	call io_peek
 	jr c, __io_xmodem_start_retry
@@ -58,11 +53,6 @@ __io_xmodem_start_detected:
 	ld a, 1
 	ld (bios_xmodem_start_flag), a
 __io_xmodem_start_resume:
-	pop iy
-	pop ix
-	pop hl
-	pop de
-	pop bc
 	pop af
 	jp __bios_timer0_isr
 

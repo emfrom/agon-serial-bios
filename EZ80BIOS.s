@@ -151,8 +151,6 @@ __bios_uart1_isr:
 	push bc
 	push de
 	push hl
-	push ix
-	push iy
 
 ;; Handle one IIR cause per entry. Any remaining enabled cause retriggers
 ;; after RETI; do not spin rereading IIR inside the ISR.
@@ -190,8 +188,6 @@ __bios_uart1_rx_drain:
 	push bc
 	push de
 	push hl
-	push ix
-	push iy
 __bios_uart1_rx_loop:
 	in0 a, (UART1_LSR)
 	and UART1_LSR_DR              ;; Receiver data ready?
@@ -226,8 +222,6 @@ __bios_uart1_rx_full:
 
 __bios_uart1_rx_done:
 	call __bios_uart1_update_rts
-	pop iy
-	pop ix
 	pop hl
 	pop de
 	pop bc
@@ -237,21 +231,13 @@ __bios_uart1_rx_done:
 ;; PRT0 wakes HALT, advances uptime, and drains residual UART1 FIFO bytes.
 __bios_timer0_isr:
 	push af
-	push bc
-	push de
 	push hl
-	push ix
-	push iy
 	in0 a, (TMR0_CTL)             ;; Reading CTL clears the timer IRQ flag.
 	ld hl, (bios_uptime_10ms)
 	inc hl
 	ld (bios_uptime_10ms), hl
 	call __bios_uart1_rx_drain
-	pop iy
-	pop ix
 	pop hl
-	pop de
-	pop bc
 	pop af
 	ei
 	reti.l
@@ -310,8 +296,6 @@ __bios_uart1_tie_disable:
 	ret
 
 __bios_uart1_irq_done:
-	pop iy
-	pop ix
 	pop hl
 	pop de
 	pop bc
