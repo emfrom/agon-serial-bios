@@ -2,10 +2,12 @@
 ;; shared BIOS section so internal symbols and absolute layout stay unified.
 
 __io_xmodem_restore_timer_vector:
+	push af
 	ld a, (bios_timer0_saved_vector)
 	ld (bios_timer0_vector), a
 	ld a, (bios_timer0_saved_vector+1)
 	ld (bios_timer0_vector+1), a
+	pop af
 	ret
 
 ;; Temporary PRT0 handler during XMODEM startup. It never returns directly
@@ -68,6 +70,10 @@ __io_xmodem_start_resume:
 ;; API: A=byte to enqueue. Returns carry set if ts is full; otherwise clear.
 ;; A successful enqueue enables TIE to start or resume transmission.
 bios_uart1_tx_put:
+	push af
+	push bc
+	push de
+	push hl
 	ld c, a
 	ld a, (bios_ts_head)
 	ld b, a
@@ -87,16 +93,26 @@ bios_uart1_tx_put:
 	in0 a, (UART1_IER)
 	or UART1_IER_TIE
 	out0 (UART1_IER), a
-	or a                         ;; Clear carry for success.
+	pop hl
+	pop de
+	pop bc
+	pop af
+	or a                         ;; Preserve input A and clear carry for success.
 	ret
 __bios_uart1_tx_put_full:
+	pop hl
+	pop de
+	pop bc
+	pop af
 	scf
 	ret
 
 ;; API: returns next rs byte in A, carry clear; carry set if rs is empty.
-;; The ISR owns rs_head and this reader owns rs_tail, so byte-sized indices
-;; need no interrupt masking. Consuming a byte may reassert RTS.
+;; Preserves BC, DE, and HL. Consuming a byte may reassert RTS.
 bios_uart1_rx_get:
+	push bc
+	push de
+	push hl
 	ld a, (bios_rs_tail)
 	ld b, a
 	ld a, (bios_rs_head)
@@ -113,10 +129,16 @@ bios_uart1_rx_get:
 	ld (bios_rs_tail), a
 	call __bios_uart1_update_rts
 	pop af
+	pop hl
+	pop de
+	pop bc
 	or a                           ;; Clear carry for success.
 	ret
 __bios_uart1_rx_get_empty:
 	scf
+	pop hl
+	pop de
+	pop bc
 	ret
 
 ;; Blocking UART1 character output. A is retried until the TX ring accepts it.
@@ -134,13 +156,11 @@ io_putchar_queued:
 	ret
 
 ;; Blocking UART1 character input; sleep between RX-buffer checks. The ISR
-;; queues the byte in rs and wakes HALT. Preserve DE for callers.
+;; queues the byte in rs and wakes HALT. Preserves BC, DE, and HL.
 io_getchar:
 	di
 io_getchar_retry:
-	push de
 	call bios_uart1_rx_get
-	pop de
 	jr nc, io_getchar_received
 	ei
 	halt
@@ -151,8 +171,11 @@ io_getchar_received:
 	ret
 
 ;; Nonblocking receive peek: A=next byte, carry clear; carry set if empty.
-;; The byte remains in rs so a later io_getchar/io_nread receives it.
+;; Preserves BC, DE, and HL; the byte remains queued for a later read.
 io_peek:
+	push bc
+	push de
+	push hl
 	ld a, (bios_rs_tail)
 	ld b, a
 	ld a, (bios_rs_head)
@@ -164,16 +187,24 @@ io_peek:
 	add hl, de
 	ld a, (hl)
 	or a
+	pop hl
+	pop de
+	pop bc
 	ret
 io_peek_empty:
 	scf
+	pop hl
+	pop de
+	pop bc
 	ret
 
 ;; Read exactly BC bytes from UART1 into the 24-bit address in HL.
-;; Preserve the caller's HL/BC values and IX/IY used as working registers.
+;; Preserve all caller registers; only the destination memory is changed.
 io_nread:
-	push hl
+	push af
 	push bc
+	push de
+	push hl
 	push ix
 	push iy
 	push hl
@@ -195,26 +226,36 @@ io_nread_loop:
 io_nread_done:
 	pop iy
 	pop ix
-	pop bc
 	pop hl
+	pop de
+	pop bc
+	pop af
 	ret
 
-;; Blocking NUL-terminated string output. HL points to the first character.
+;; Blocking NUL-terminated string output. HL points to the first character;
+;; all caller registers are preserved.
 io_puts:
+	push af
+	push hl
+io_puts_loop:
 	ld a, (hl)
 	or a
-	ret z
-	push hl
+	jr z, io_puts_done
 	call io_putchar
-	pop hl
 	inc hl
-	jr io_puts
+	jr io_puts_loop
+io_puts_done:
+	pop hl
+	pop af
+	ret
 
 
 ;; Install the temporary PRT0 vector and request XMODEM-CRC until a start
 ;; control byte is visible in rs. The ISR discards unrelated bytes but leaves
 ;; SOH/CAN/EOT queued for the receiver.
 __io_xmodem_wait_for_start:
+	push af
+	push hl
 	xor a
 	ld (bios_xmodem_start_flag), a
 	ld a, (bios_uptime_10ms)
@@ -249,13 +290,19 @@ __io_xmodem_flag_wait:
 	jr __io_xmodem_flag_wait
 __io_xmodem_flag_ready:
 	ei
+	pop hl
+	pop af
 	ret
 
 ;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
 ;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
 io_xmodem_rx:
+	push bc
+	push de
 	push hl
+	push ix
+	push iy
 	ld (bios_xmodem_wp), hl
 	ld de, EXTERNAL_RAM_START_ADDRESS
 	or a
@@ -425,6 +472,8 @@ __io_xmodem_reject:
 
 __io_xmodem_crc_update:
 	;; A=data byte. CRC-16/XMODEM: init 0, poly 0x1021, MSB first.
+	push af
+	push bc
 	ld b, a
 	ld a, (bios_xmodem_crc_hi)
 	xor b
@@ -447,6 +496,8 @@ __io_xmodem_crc_bit:
 __io_xmodem_crc_next:
 	dec c
 	jr nz, __io_xmodem_crc_bit
+	pop bc
+	pop af
 	ret
 
 __io_xmodem_complete:
@@ -471,10 +522,18 @@ __io_xmodem_rx_done:
 	call __io_xmodem_restore_timer_vector
 	ei
 	pop af
+	pop iy
+	pop ix
 	pop hl
+	pop de
+	pop bc
 	ret
 __io_xmodem_rx_bad_start:
 	ld a, XMODEM_STATUS_ERROR
+	pop iy
+	pop ix
 	pop hl
+	pop de
+	pop bc
 	ret
 

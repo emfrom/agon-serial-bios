@@ -135,26 +135,32 @@ up to 255 bytes. RX overflow drops the byte and increments the wrapping
 
 Assembly entry points:
 
-- `bios_uart1_tx_put`: byte in `A`; carry is set if the TX ring is full. On
-  success it queues the byte and enables the TX-empty interrupt.
+Returning routines preserve caller registers unless a register is documented as
+an output; `AF` may change when `A` or carry is a result. `bios_entry` and
+`bios_halt` do not return. Interrupt handlers preserve the interrupted register
+set.
+
+- `bios_wait`: busy-wait delay; preserves all caller registers.
+- `bios_halt`: non-returning entry to the interrupt-enabled idle loop.
+- `bios_uart1_tx_put`: byte in `A`; preserves `A`, queues it on success, and
+  sets carry if the TX ring is full.
 - `bios_uart1_rx_get`: returns a byte in `A` with carry clear, or carry set if
-  the RX ring is empty. It updates RTS as space is freed.
-- `io_putchar`: blocking character output; byte in `A`. It halts while the TX
-  ring is full and retries after an interrupt.
-- `io_getchar`: blocking character input; returns the byte in `A` and preserves
-  `DE`. It sleeps while the RX ring is empty and wakes when the UART1 ISR queues
-  data.
+  the RX ring is empty; preserves `BC`, `DE`, and `HL`.
+- `io_putchar`: blocking output of `A`; preserves all caller registers.
+- `io_getchar`: blocking input; returns the byte in `A` and preserves
+  `BC`, `DE`, `HL`, `IX`, and `IY`.
 - `io_peek`: nonblocking RX-ring peek; returns the next byte in `A` with carry
-  clear, or carry set if empty. It does not consume the byte.
+  clear, or carry set if empty; preserves `BC`, `DE`, and `HL`.
 - `io_nread`: blocking binary input; 24-bit `HL` points to the destination and
-  24-bit `BC` is the exact byte count. It returns only after reading that many
-  bytes, and restores the caller's `HL`, `BC`, `IX`, and `IY` values.
-- `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
+  24-bit `BC` is the exact byte count. It writes the requested bytes and
+  preserves all caller registers.
+- `io_puts`: blocking NUL-terminated string output; `HL` points to the string;
+  preserves all caller registers.
 - `io_xmodem_rx`: blocking XMODEM-CRC binary receive; 24-bit `HL` is the start
   address in external SRAM (`0x010000..0x08FF7E`). Returns status in `A`
-  (`0` success, nonzero cancel/error/invalid address), preserves `HL`, and
-  restores the previous PRT0 vector before returning. `bios_xmodem_wp` is the
-  exclusive end address after the payload bytes.
+  (`0` success, nonzero cancel/error/invalid address), preserves `BC`, `DE`,
+  `HL`, `IX`, and `IY`, and restores the previous PRT0 vector. `bios_xmodem_wp`
+  is the exclusive end address after the payload bytes.
 
 ## XMODEM-CRC receive
 

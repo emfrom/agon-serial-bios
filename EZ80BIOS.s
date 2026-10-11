@@ -186,6 +186,12 @@ __bios_uart1_rx_service:
 ;; Drain all available hardware RX bytes into rs. Also called by PRT0 so a
 ;; sub-threshold UART FIFO is serviced on the next 10 ms tick.
 __bios_uart1_rx_drain:
+	push af
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
 __bios_uart1_rx_loop:
 	in0 a, (UART1_LSR)
 	and UART1_LSR_DR              ;; Receiver data ready?
@@ -220,6 +226,12 @@ __bios_uart1_rx_full:
 
 __bios_uart1_rx_done:
 	call __bios_uart1_update_rts
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	pop af
 	ret
 
 ;; PRT0 wakes HALT, advances uptime, and drains residual UART1 FIFO bytes.
@@ -244,8 +256,9 @@ __bios_timer0_isr:
 	ei
 	reti.l
 
+;; ISR continuation: the dispatcher has saved the interrupted register set.
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
-;; slots. Leave TIE enabled only when software data remains queued.
+;; slots and tail-jump to the ISR epilogue.
 __bios_uart1_tx_service:
 	ld c, UART1_TX_FIFO_CAPACITY
 __bios_uart1_tx_loop:
@@ -281,15 +294,19 @@ __bios_uart1_tx_disable:
 	jp __bios_uart1_irq_done
 
 __bios_uart1_tie_enable:
+	push af
 	in0 a, (UART1_IER)
 	or UART1_IER_TIE              ;; Keep refilling while software TX data remains.
 	out0 (UART1_IER), a
+	pop af
 	ret
 
 __bios_uart1_tie_disable:
+	push af
 	in0 a, (UART1_IER)
 	and UART1_IER_TIE_CLEAR       ;; Preserve RX and line-status enables.
 	out0 (UART1_IER), a
+	pop af
 	ret
 
 __bios_uart1_irq_done:
@@ -305,6 +322,8 @@ __bios_uart1_irq_done:
 ;; Hysteresis: deassert RTS below 33 free slots; reassert only at 133 free
 ;; slots (one complete XMODEM/CRC packet). Keep the current state in between.
 __bios_uart1_update_rts:
+	push af
+	push bc
 	ld a, (bios_rs_tail)
 	ld b, a
 	ld a, (bios_rs_head)
@@ -315,13 +334,16 @@ __bios_uart1_update_rts:
 	cp BIOS_RS_RTS_LOW_WATERMARK
 	jr c, __bios_uart1_rts_deassert
 	cp BIOS_RS_RTS_REASSERT_WATERMARK
-	ret c                         ;; Preserve current RTS in the hysteresis band.
+	jr c, __bios_uart1_update_rts_done ;; Preserve RTS in the hysteresis band.
 	ld a, UART1_MCTL_RTS          ;; MCTL RTS=1 drives active-low RTS asserted.
 	out0 (UART1_MCTL), a
-	ret
+	jr __bios_uart1_update_rts_done
 __bios_uart1_rts_deassert:
 	xor a                         ;; MCTL RTS=0 deasserts active-low RTS.
 	out0 (UART1_MCTL), a
+__bios_uart1_update_rts_done:
+	pop bc
+	pop af
 	ret
 
 ;; Busy-wait for about 50 ms at 18.432 MHz (~921,600 CPU cycles).
