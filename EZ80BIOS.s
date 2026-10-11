@@ -6,7 +6,7 @@
 
 	.assume ADL = 1
 
-	.global bios_entry, bios_xmodem_receive, bios_xmodem_start, bios_xmodem_wp, bios_uptime_10ms
+	.global bios_entry, io_xmodem_rx, bios_xmodem_start, bios_xmodem_wp, bios_uptime_10ms
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
 	.global io_putchar, io_getchar, io_peek, io_nread, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
@@ -120,7 +120,8 @@ bios_copy_memory_message:
 	call io_puts
 	ld hl, bios_xmodem_loading_message
 	call io_puts
-	call bios_xmodem_receive
+	ld hl, EXTERNAL_RAM_START_ADDRESS
+	call io_xmodem_rx
 	or a
 	jr nz, bios_xmodem_failed
 	ld hl, bios_xmodem_complete_message
@@ -239,6 +240,13 @@ bios_timer0_isr:
 	ei
 	reti.l
 
+bios_xmodem_restore_timer_vector:
+	ld a, (bios_timer0_saved_vector)
+	ld (bios_timer0_vector), a
+	ld a, (bios_timer0_saved_vector+1)
+	ld (bios_timer0_vector+1), a
+	ret
+
 ;; Temporary PRT0 handler during XMODEM startup. It never returns directly
 ;; from the interrupt: after peeking/handshake work it restores registers and
 ;; tail-jumps to the regular timer ISR, which performs RETI.L.
@@ -249,6 +257,7 @@ bios_xmodem_start:
 	push hl
 	push ix
 	push iy
+bios_xmodem_start_scan:
 	call io_peek
 	jr c, bios_xmodem_start_retry
 	cp XMODEM_SOH
@@ -257,6 +266,9 @@ bios_xmodem_start:
 	jr z, bios_xmodem_start_detected
 	cp XMODEM_CAN
 	jr z, bios_xmodem_start_detected
+	;; Discard unrelated bytes so an old byte cannot hide the SOH behind it.
+	call bios_uart1_rx_get
+	jr bios_xmodem_start_scan
 
 bios_xmodem_start_retry:
 	ld a, (bios_xmodem_retry_armed)
@@ -279,12 +291,9 @@ bios_xmodem_start_arm_retry:
 	jr bios_xmodem_start_resume
 
 bios_xmodem_start_detected:
-	ld a, (bios_timer0_saved_vector)
-	ld (bios_timer0_vector), a
-	ld a, (bios_timer0_saved_vector+1)
-	ld (bios_timer0_vector+1), a
+	call bios_xmodem_restore_timer_vector
 	ld a, 1
-	ld (bios_xmodem_started), a
+	ld (bios_xmodem_start_flag), a
 bios_xmodem_start_resume:
 	pop iy
 	pop ix
@@ -540,10 +549,11 @@ bios_wait_inner:
 	ret
 
 ;; Install the temporary PRT0 vector and request XMODEM-CRC until a start
-;; control byte is visible in rs. The ISR peeks without consuming it.
-bios_xmodem_wait_start:
+;; control byte is visible in rs. The ISR discards unrelated bytes but leaves
+;; SOH/CAN/EOT queued for the receiver.
+bios_xmodem_wait_for_start:
 	xor a
-	ld (bios_xmodem_started), a
+	ld (bios_xmodem_start_flag), a
 	ld a, (bios_uptime_10ms)
 	cp XMODEM_RETRY_ARM_THRESHOLD
 	ld a, 0
@@ -566,25 +576,39 @@ bios_xmodem_start_phase_ready:
 	ei
 	ld a, XMODEM_CRC_REQUEST
 	call io_putchar
-bios_xmodem_start_wait:
-	ld a, (bios_xmodem_started)
+bios_xmodem_flag_wait:
+	di
+	ld a, (bios_xmodem_start_flag)
 	or a
-	ret nz
+	jr nz, bios_xmodem_flag_ready
+	ei
 	halt
-	jr bios_xmodem_start_wait
+	jr bios_xmodem_flag_wait
+bios_xmodem_flag_ready:
+	ei
+	ret
 
 ;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
-;; A=0 on EOT, A=1 on cancellation or insufficient external RAM.
-bios_xmodem_receive:
-	ld hl, EXTERNAL_RAM_START_ADDRESS
+;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
+io_xmodem_rx:
+	push hl
 	ld (bios_xmodem_wp), hl
+	ld de, EXTERNAL_RAM_START_ADDRESS
+	or a
+	sbc hl, de
+	jp c, io_xmodem_rx_bad_start
+	ld hl, XMODEM_LAST_SAFE_FRAME_START
+	ld de, (bios_xmodem_wp)
+	or a
+	sbc hl, de
+	jp c, io_xmodem_rx_bad_start
 	ld a, 1
 	ld (bios_xmodem_expected), a
 	xor a
 	ld (bios_xmodem_have_block), a
 
-	call bios_xmodem_wait_start
+	call bios_xmodem_wait_for_start
 bios_xmodem_wait_first_byte:
 	call io_getchar
 	cp XMODEM_SOH
@@ -642,12 +666,12 @@ bios_xmodem_packet:
 	jr bios_xmodem_bad_header
 
 bios_xmodem_expected_block:
-	;; A 130-byte frame must fit; this boundary leaves no room for its CRC.
+	;; A 130-byte frame must fit in external SRAM, including both CRC bytes.
 	ld de, (bios_xmodem_wp)
-	ld hl, XMODEM_FRAME_START_NO_CRC_SPACE
+	ld hl, XMODEM_LAST_SAFE_FRAME_START
 	or a
 	sbc hl, de
-	jp z, bios_xmodem_abort
+	jp c, bios_xmodem_abort
 	ld a, 1
 	ld (bios_xmodem_store), a
 	jr bios_xmodem_read_data
@@ -766,15 +790,29 @@ bios_xmodem_complete:
 	ld a, XMODEM_ACK
 	call io_putchar
 	xor a
-	ret
+	jp io_xmodem_rx_done
 bios_xmodem_cancelled:
 	ld a, XMODEM_STATUS_CANCELLED
-	ret
+	jp io_xmodem_rx_done
 bios_xmodem_abort:
 	ld a, XMODEM_CAN
 	call io_putchar
 	call io_putchar
 	ld a, XMODEM_STATUS_ERROR
+	jp io_xmodem_rx_done
+
+;; Always put the caller's timer vector back before returning from the API.
+io_xmodem_rx_done:
+	push af
+	di
+	call bios_xmodem_restore_timer_vector
+	ei
+	pop af
+	pop hl
+	ret
+io_xmodem_rx_bad_start:
+	ld a, XMODEM_STATUS_ERROR
+	pop hl
 	ret
 
 bios_loaded_message:
@@ -859,7 +897,7 @@ bios_rs_overflow: .db 0
 bios_uptime_10ms:           .ds 3, 0
 bios_xmodem_wp:             .ds 3, 0
 bios_xmodem_retry_armed:    .db 0
-bios_xmodem_started:        .db 0
+bios_xmodem_start_flag:     .db 0
 bios_timer0_saved_vector:   .ds 2, 0
 bios_xmodem_expected:       .db 0
 bios_xmodem_have_block:     .db 0
@@ -914,7 +952,7 @@ bios_stack:
 	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
 	.set EXTERNAL_RAM_LAST_PAGE, 0x08
 	.set EXTERNAL_RAM_START_ADDRESS, 0x010000
-	.set XMODEM_FRAME_START_NO_CRC_SPACE, 0x08FF80
+	.set XMODEM_LAST_SAFE_FRAME_START, 0x08FF7E
 	.set XMODEM_BLOCK_SIZE, 128
 	.set XMODEM_SOH, 0x01
 	.set XMODEM_EOT, 0x04
