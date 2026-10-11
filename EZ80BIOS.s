@@ -161,8 +161,8 @@ bios_uart1_rx_loop:
 	jr z, bios_uart1_rx_full      ;; One slot is reserved to distinguish full.
 
 	ld hl, bios_ringbuffer_in
+	ld de, BIOS_ZERO
 	ld e, b
-	ld d, BIOS_ZERO
 	add hl, de
 	ld (hl), c
 	ld a, b
@@ -194,8 +194,8 @@ bios_uart1_tx_loop:
 	jr z, bios_uart1_tx_disable
 
 	ld hl, bios_ringbuffer_out
+	ld de, BIOS_ZERO
 	ld e, b
-	ld d, BIOS_ZERO
 	add hl, de
 	ld a, (hl)
 	out0 (UART1_THR), a
@@ -274,8 +274,8 @@ bios_uart1_tx_put:
 	cp d
 	jr z, bios_uart1_tx_put_full
 	ld hl, bios_ringbuffer_out
+	ld de, BIOS_ZERO
 	ld e, b
-	ld d, BIOS_ZERO
 	add hl, de
 	ld (hl), c
 	ld a, b
@@ -300,8 +300,8 @@ bios_uart1_rx_get:
 	cp b
 	jr z, bios_uart1_rx_get_empty
 	ld hl, bios_ringbuffer_in
+	ld de, BIOS_ZERO
 	ld e, b
-	ld d, BIOS_ZERO
 	add hl, de
 	ld a, (hl)
 	push af                        ;; Preserve return byte across RTS update.
