@@ -24,7 +24,7 @@ for _ in {1..50}; do
 done
 [[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] || { echo "Failed to create virtual serial pair" >&2; exit 1; }
 
-emulator_args=("$@" --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
+emulator_args=("$@" --no-audio --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
 debugger=0
 for arg in "$@"; do
   [[ $arg == --debugger || $arg == -d ]] && debugger=1
