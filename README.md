@@ -4,9 +4,11 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 
 ## Project contents
 
-- `EZ80BIOS.s` implements the UART1 interrupt service routine, RX/TX ring
-  buffers, RTS flow control, BIOS entry points, and a Minicom-compatible
-  XMODEM-CRC receiver.
+- `EZ80BIOS.s` implements BIOS startup, interrupt/timer services, vectors, and
+  memory layout. It includes `EZ80IO.s` in the shared BIOS section.
+- `EZ80IO.s` contains the UART1 IO APIs and XMODEM-CRC receiver.
+- `EZ80BIOS_public.inc` declares the public BIOS/IO symbols for both the BIOS
+  source and client assembly modules.
 - `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
   and transfers execution to it.
 - `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
