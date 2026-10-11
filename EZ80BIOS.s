@@ -329,7 +329,7 @@ io_puts:
 	jr io_puts
 
 bios_loaded_message:
-	.asciz "BIOS Loaded"
+	.asciz "BIOS Loaded\n"
 
 ;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
 ;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,

@@ -54,7 +54,7 @@ and dispatches interrupt causes on UART0 and UART1. The patch also advances
 peripherals while the CPU is halted and wakes the CPU when an interrupt is
 accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
 
-The UART1 end-to-end BIOS smoke test reached `BIOS Loaded` over the serial
+The UART1 end-to-end BIOS smoke test reached `BIOS Loaded\n` over the serial
 link.
 
 ## eZ80 interrupt and memory references
@@ -117,7 +117,7 @@ Assembly entry points:
   ring is full and retries after an interrupt.
 - `io_getchar`: blocking character input; returns the byte in `A`.
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
-  `bios_entry` uses it to print `BIOS Loaded` before entering the HALT loop.
+  `bios_entry` uses it to print `BIOS Loaded\n` before entering the HALT loop.
 
 UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
 it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
@@ -128,7 +128,7 @@ so it works with UART adapters that do not provide modem-status signals.
 
 ```text
 bios_entry
-├─ io_puts ("BIOS Loaded")
+├─ io_puts ("BIOS Loaded\n")
 │  └─ io_putchar
 │     └─ bios_uart1_tx_put (retries until queued)
 └─ bios_idle (HALT; wakes on UART1 interrupt, vector 0x1A)
