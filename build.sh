@@ -9,9 +9,16 @@ mkdir -p bin obj
 
 "$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
   -o obj/EZ80BIOS.o EZ80BIOS.s
-"$agondev_bin/ez80-none-elf-ld" -e 0xE000 -Ttext 0xE000 \
+"$agondev_bin/ez80-none-elf-ld" -T "$root/EZ80BIOS.ld" \
   --oformat binary -Map bin/EZ80BIOS.map \
-  -o bin/EZ80BIOS.bin obj/EZ80BIOS.o
+  -o obj/EZ80BIOS.full.bin obj/EZ80BIOS.o
+# The absolute assembly image occupies 0xE000..0xFFFF in the full address image.
+dd if=obj/EZ80BIOS.full.bin of=bin/EZ80BIOS.bin \
+  bs=1 skip=$((0xE000)) count=$((0x2000)) status=none
+[[ $(wc -c < bin/EZ80BIOS.bin) -eq 8192 ]] || {
+  echo "EZ80BIOS.bin must be exactly 8192 bytes" >&2
+  exit 1
+}
 
 make
 

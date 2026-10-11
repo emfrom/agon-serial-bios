@@ -1,23 +1,350 @@
-;; EZ80BIOS.s — 8 KiB BIOS image loaded at 0xFFE000 before SRAM remapping.
-;; After RAM_ADDR_U=0, the same SRAM bytes appear at 0x00E000..0x00FFFF.
-;; With I=0xE0, the eZ80F92 IVT slots below are in this zero-wait-state SRAM.
-;; Configure the assembler/linker to emit a flat binary exactly 8192 bytes long.
+;; EZ80BIOS.s — Absolute BIOS addresses are 0xE000..0xFFFF.
+;; The image is loaded at 0xB7E000, then SRAM remapping makes it appear at
+;; 0x00E000..0x00FFFF. The IVT at 0xFB00 sits just before the ring buffers.
+;; build.sh extracts this absolute range into the 8192-byte BIOS image.
+;; All non-emitting hardware/bit constants are collected in the .set block at EOF.
 
 	.assume ADL = 1
-	.org 0x0000
 
-;; The ADL-mode absolute JP occupies four bytes, using the otherwise-unused
-;; vector slots at offsets 0x00 and 0x02. Keep this entry before the IVT.
+	.global bios_entry
+	.global bios_uart1_tx_put, bios_uart1_rx_get
+	.global io_putchar, io_getchar, io_puts
+	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
+	.global bios_rs_overflow, bios_rs_ring, bios_ts_ring
+
+	.section .bios,"ax",@progbits
+	.org 0xE000
+
+;; Execution begins directly at the BIOS entry point.
 bios_entry:
-	jp bios_start
+	di
+	ld sp, bios_stack_top
+	ld a, BIOS_IVT_PAGE
+	ld i, a
 
-;; The remaining unused vector slots at 0x04 and 0x06 are zeroed.
-	.org 0x0004
-bios_unused_04: .dw 0
-bios_unused_06: .dw 0
+	;; Power UART1 before configuring it.
+	in0 a, (CLK_PPD1)
+	ld b, a
+	ld a, UART1_OFF
+	cpl
+	and b
+	out0 (CLK_PPD1), a
+	xor a
+	out0 (UART1_IER), a
 
-;; F92 vector entries are 16-bit ISR addresses, little-endian, at I:IVECT.
-	.org 0x0008
+	;; Route PC0/PC1 (UART1 TX/RX), PC2 (RTS), and PC3 (CTS).
+	;; GPIO mode 7 is ALT2=1, ALT1=0, DDR=1.
+	in0 a, (PC_DDR)
+	or PORTPIN_FOURBITS_L
+	out0 (PC_DDR), a
+	in0 a, (PC_ALT1)
+	ld b, a
+	ld a, PORTPIN_FOURBITS_L
+	cpl
+	and b
+	out0 (PC_ALT1), a
+	in0 a, (PC_ALT2)
+	or PORTPIN_FOURBITS_L
+	out0 (PC_ALT2), a
+
+	;; 115200 baud from the Agon's 18.432 MHz system clock: divisor 10.
+	;; DLAB=1, then 8 data bits, no parity, one stop bit.
+	ld a, UART1_LCTL_DLAB | UART1_LCTL_8N1
+	out0 (UART1_LCTL), a
+	ld a, UART1_BRG_DIVISOR_115200
+	out0 (UART1_BRG_L), a
+	xor a
+	out0 (UART1_BRG_H), a
+	ld a, UART1_LCTL_8N1
+	out0 (UART1_LCTL), a
+
+	;; Enable both 16-byte FIFOs; clear them and interrupt RX at 14 bytes.
+	ld a, UART1_FCTL_FIFO_INIT
+	out0 (UART1_FCTL), a
+
+	;; Empty the software rings and overflow counter.
+	xor a
+	ld (bios_rs_head), a
+	ld (bios_rs_tail), a
+	ld (bios_ts_head), a
+	ld (bios_ts_tail), a
+	ld (bios_rs_overflow), a
+
+	;; Use only RTS from MCTL; RTS is active-low at the pin.
+	ld a, UART1_MCTL_RTS          ;; DTR stays off.
+	out0 (UART1_MCTL), a
+
+	;; Clear any stale receive/line/modem status before enabling IRQs.
+	in0 a, (UART1_LSR)
+	in0 a, (UART1_MSR)
+	ld a, UART1_IER_INIT          ;; RX, line-status, and modem deltas (CTS used)
+	out0 (UART1_IER), a
+	ei
+
+	ld hl, bios_loaded_message
+	call io_puts
+
+bios_idle:
+	halt
+	jr bios_idle
+
+bios_unhandled_isr:
+	reti.l
+
+;; UART1 interrupt service routine. RX is drained completely into rs; TX is
+;; filled in 16-byte FIFO bursts from ts. Preserve the interrupted context.
+bios_uart1_isr:
+	push af
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+
+bios_uart1_irq_next:
+	in0 a, (UART1_IIR)
+	ld b, a
+	and UART1_IIR_INTBIT
+	jp nz, bios_uart1_irq_done
+	ld a, b
+	and UART1_IIR_INSTS_MASK
+	cp UART1_IIR_LINE_STATUS     ;; Receiver line-status error
+	jr z, bios_uart1_irq_line_status
+	cp UART1_IIR_RX_DATA_READY
+	jr z, bios_uart1_rx_service
+	cp UART1_IIR_RX_TIMEOUT
+	jr z, bios_uart1_rx_service
+	cp UART1_IIR_TX_EMPTY         ;; Transmit FIFO empty
+	jr z, bios_uart1_tx_service
+
+	;; Modem IRQs can be raised by any input delta; only CTS affects TX.
+	call bios_uart1_cts_service
+	jr bios_uart1_irq_next
+
+bios_uart1_irq_line_status:
+	in0 a, (UART1_LSR)            ;; Reading LSR clears line-status causes.
+
+;; Drain all currently available bytes, not just the FIFO's first byte.
+bios_uart1_rx_service:
+bios_uart1_rx_loop:
+	in0 a, (UART1_LSR)
+	and UART1_LSR_DR              ;; Receiver data ready?
+	jr z, bios_uart1_rx_done
+	in0 a, (UART1_RBR)
+	ld c, a                       ;; Preserve byte while checking ring space.
+	ld a, (bios_rs_head)
+	ld b, a                       ;; B = current head
+	inc a
+	ld d, a                       ;; D = next head
+	ld a, (bios_rs_tail)
+	cp d
+	jr z, bios_uart1_rx_full      ;; One slot is reserved to distinguish full.
+
+	ld hl, bios_ringbuffer_in
+	ld e, b
+	ld d, BIOS_ZERO
+	add hl, de
+	ld (hl), c
+	ld a, b
+	inc a
+	ld (bios_rs_head), a
+	call bios_uart1_update_rts
+	jr bios_uart1_rx_loop
+
+bios_uart1_rx_full:
+	ld a, (bios_rs_overflow)
+	inc a
+	ld (bios_rs_overflow), a
+	call bios_uart1_update_rts
+	jr bios_uart1_rx_loop
+
+bios_uart1_rx_done:
+	call bios_uart1_update_rts
+	jr bios_uart1_irq_next
+
+;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
+;; slots. Leave TIE enabled only when software data remains queued.
+bios_uart1_tx_service:
+	in0 a, (UART1_MSR)
+	and UART1_MSR_CTS
+	jr z, bios_uart1_tx_disable
+	ld c, UART1_TX_FIFO_CAPACITY
+bios_uart1_tx_loop:
+	ld a, (bios_ts_tail)
+	ld b, a
+	ld a, (bios_ts_head)
+	cp b
+	jr z, bios_uart1_tx_disable
+
+	ld hl, bios_ringbuffer_out
+	ld e, b
+	ld d, BIOS_ZERO
+	add hl, de
+	ld a, (hl)
+	out0 (UART1_THR), a
+	inc b
+	ld a, b
+	ld (bios_ts_tail), a
+	dec c
+	jr nz, bios_uart1_tx_loop
+
+	;; The FIFO is full. If that also emptied ts, stop empty-FIFO IRQs.
+	ld a, (bios_ts_head)
+	ld b, a
+	ld a, (bios_ts_tail)
+	cp b
+	jr z, bios_uart1_tx_disable
+	jp bios_uart1_irq_next
+
+bios_uart1_tx_disable:
+	call bios_uart1_tie_disable
+	jp bios_uart1_irq_next
+
+;; CTS is active-low on the pin; MSR bit 4 is 1 when CTS is asserted.
+;; Reconcile TIE with both CTS and the queued-data state.
+bios_uart1_cts_service:
+	in0 a, (UART1_MSR)            ;; Clears all modem delta bits; ignore non-CTS.
+	and UART1_MSR_CTS
+	jr z, bios_uart1_tie_disable
+	ld a, (bios_ts_head)
+	ld b, a
+	ld a, (bios_ts_tail)
+	cp b
+	jr z, bios_uart1_tie_disable
+	in0 a, (UART1_IER)
+	or UART1_IER_TIE
+	out0 (UART1_IER), a
+	ret
+
+bios_uart1_tie_disable:
+	in0 a, (UART1_IER)
+	and UART1_IER_TIE_CLEAR       ;; Preserve RIE, LSIE, and MIIE.
+	out0 (UART1_IER), a
+	ret
+
+bios_uart1_irq_done:
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	pop af
+	reti.l
+
+;; Update RTS from free space in rs. The one-empty-slot ring has 255 usable
+;; bytes; deassert RTS once fewer than 33 slots remain.
+bios_uart1_update_rts:
+	ld a, (bios_rs_tail)
+	ld b, a
+	ld a, (bios_rs_head)
+	ld c, a
+	ld a, b
+	sub c
+	dec a                         ;; free = tail - head - 1 (modulo 256)
+	cp BIOS_RS_RTS_LOW_WATERMARK
+	jr c, bios_uart1_rts_deassert
+	ld a, UART1_MCTL_RTS          ;; MCTL RTS=1 drives active-low RTS asserted.
+	out0 (UART1_MCTL), a
+	ret
+bios_uart1_rts_deassert:
+	xor a                         ;; MCTL RTS=0 deasserts active-low RTS.
+	out0 (UART1_MCTL), a
+	ret
+
+;; API: A=byte to enqueue. Returns carry set if ts is full; otherwise clear.
+;; CTS service enables TIE when CTS is asserted and ts contains data.
+bios_uart1_tx_put:
+	ld c, a
+	ld a, (bios_ts_head)
+	ld b, a
+	inc a
+	ld d, a
+	ld a, (bios_ts_tail)
+	cp d
+	jr z, bios_uart1_tx_put_full
+	ld hl, bios_ringbuffer_out
+	ld e, b
+	ld d, BIOS_ZERO
+	add hl, de
+	ld (hl), c
+	ld a, b
+	inc a
+	ld (bios_ts_head), a
+	call bios_uart1_cts_service ;; Start only if CTS is asserted.
+	or a                         ;; Clear carry for success.
+	ret
+bios_uart1_tx_put_full:
+	scf
+	ret
+
+;; API: returns next rs byte in A, carry clear; carry set if rs is empty.
+;; The ISR owns rs_head and this reader owns rs_tail, so byte-sized indices
+;; need no interrupt masking. Consuming a byte may reassert RTS.
+bios_uart1_rx_get:
+	ld a, (bios_rs_tail)
+	ld b, a
+	ld a, (bios_rs_head)
+	cp b
+	jr z, bios_uart1_rx_get_empty
+	ld hl, bios_ringbuffer_in
+	ld e, b
+	ld d, BIOS_ZERO
+	add hl, de
+	ld a, (hl)
+	push af                        ;; Preserve return byte across RTS update.
+	inc b
+	ld a, b
+	ld (bios_rs_tail), a
+	call bios_uart1_update_rts
+	pop af
+	or a                           ;; Clear carry for success.
+	ret
+bios_uart1_rx_get_empty:
+	scf
+	ret
+
+;; Blocking UART1 character output. A is retried until the TX ring accepts it.
+io_putchar:
+	push af
+io_putchar_retry:
+	pop af
+	push af
+	call bios_uart1_tx_put
+	jr nc, io_putchar_queued
+	halt                           ;; TX/CTS interrupt wakes when progress is possible.
+	jr io_putchar_retry
+io_putchar_queued:
+	pop af
+	ret
+
+;; Blocking UART1 character input. Returns the byte in A.
+io_getchar:
+	call bios_uart1_rx_get
+	jr c, io_getchar
+	ret
+
+;; Blocking NUL-terminated string output. HL points to the first character.
+io_puts:
+	ld a, (hl)
+	or a
+	ret z
+	push hl
+	call io_putchar
+	pop hl
+	inc hl
+	jr io_puts
+
+bios_loaded_message:
+	.asciz "BIOS Loaded"
+
+;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
+;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,
+;; immediately before the ring metadata at 0xFC00.
+	.org 0xFB00
+bios_unused_00:          .dw 0
+bios_unused_02:          .dw 0
+bios_unused_04:          .dw 0
+bios_unused_06:          .dw 0
 bios_flash_vector:       .dw bios_unhandled_isr ; 0x08 Flash
 bios_timer0_vector:      .dw bios_unhandled_isr ; 0x0A PRT0
 bios_timer1_vector:      .dw bios_unhandled_isr ; 0x0C PRT1
@@ -67,33 +394,72 @@ bios_unused_62:          .dw 0                 ; 0x62 unused
 bios_unused_64:          .dw 0                 ; 0x64 unused
 bios_unused_66:          .dw 0                 ; 0x66 unused
 
-	.org 0x0068
-bios_start:
-	di
-	ld sp, bios_stack_top
-	;; TODO: Initialize hardware and main loop.
+	.org 0xFC00
+bios_rs_head:     .db 0
+bios_rs_tail:     .db 0
+bios_ts_head:     .db 0
+bios_ts_tail:     .db 0
+bios_rs_overflow: .db 0
 
-bios_halt:
-	halt
-	jr bios_halt
-
-bios_unhandled_isr:
-	reti.l
-
-bios_uart1_isr:
-	;; TODO: Service UART1, then return from the interrupt.
-	reti.l
-
-
-	.org 0x1D00
+	.org 0xFD00
+bios_rs_ring:
 bios_ringbuffer_in:
 	.ds 256, 0
 
-	.org 0x1E00
+	.org 0xFE00
+bios_ts_ring:
 bios_ringbuffer_out:
 	.ds 256, 0
 
-	.org 0x1F00
+	.org 0xFF00
 bios_stack:
 	.ds 256, 0
+
+;; Non-emitting constants: register names follow ez80f92.h/ez80f92.inc and
+;; the eZ80F92 product specification. Keep all hardware values here.
+	.set UART1_RBR, 0xD0
+	.set UART1_THR, 0xD0
+	.set UART1_BRG_L, 0xD0
+	.set UART1_IER, 0xD1
+	.set UART1_BRG_H, 0xD1
+	.set UART1_IIR, 0xD2
+	.set UART1_FCTL, 0xD2
+	.set UART1_LCTL, 0xD3
+	.set UART1_MCTL, 0xD4
+	.set UART1_LSR, 0xD5
+	.set UART1_MSR, 0xD6
+	.set CLK_PPD1, 0xDB
+	.set PC_DDR, 0x9F
+	.set PC_ALT1, 0xA0
+	.set PC_ALT2, 0xA1
+
+	.set UART1_LSR_DR, 0x01
+	.set UART1_IER_RIE, 0x01
+	.set UART1_IER_TIE, 0x02
+	.set UART1_IER_LSIE, 0x04
+	.set UART1_IER_MIIE, 0x08
+	.set UART1_IER_TIE_CLEAR, 0xFD
+	.set UART1_IIR_INTBIT, 0x01
+	.set UART1_IIR_INSTS_MASK, 0x0E
+	.set UART1_IIR_TX_EMPTY, 0x02
+	.set UART1_IIR_RX_DATA_READY, 0x04
+	.set UART1_IIR_LINE_STATUS, 0x06
+	.set UART1_IIR_RX_TIMEOUT, 0x0C
+	.set UART1_FCTL_FIFOEN, 0x01
+	.set UART1_FCTL_CLRRXF, 0x02
+	.set UART1_FCTL_CLRTXF, 0x04
+	.set UART1_FCTL_TRIG_14, 0xC0
+	.set UART1_LCTL_8N1, 0x03
+	.set UART1_LCTL_DLAB, 0x80
+	.set UART1_MCTL_RTS, 0x02
+	.set UART1_MSR_CTS, 0x10
+	.set UART1_OFF, 0x02
+	.set PORTPIN_FOURBITS_L, 0x0F
+	.set BIOS_ZERO, 0
+	.set UART1_BRG_DIVISOR_115200, 10
+	.set UART1_TX_FIFO_CAPACITY, 16
+	.set UART1_FCTL_FIFO_INIT, UART1_FCTL_FIFOEN | UART1_FCTL_CLRRXF | UART1_FCTL_CLRTXF | UART1_FCTL_TRIG_14
+	.set UART1_IER_INIT, UART1_IER_RIE | UART1_IER_LSIE | UART1_IER_MIIE
+	.set BIOS_IVT_PAGE, 0xFB
+	.set BIOS_RS_RTS_LOW_WATERMARK, 33
 	.set bios_stack_top, 0x010000

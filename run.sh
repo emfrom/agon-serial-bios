@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-baud=${1:-9600}
+baud=115200
 emulator=$(command -v fab-agon-emulator) || { echo "fab-agon-emulator not found" >&2; exit 1; }
 for tool in socat minicom xterm; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
@@ -24,12 +24,38 @@ for _ in {1..50}; do
 done
 [[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] || { echo "Failed to create virtual serial pair" >&2; exit 1; }
 
-"$emulator" --uart1-device "$tmpdir/emulator" --uart1-baud "$baud" &
-emulator_pid=$!
-sleep 0.5
+emulator_args=("$@" --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
+debugger=0
+for arg in "$@"; do
+  [[ $arg == --debugger || $arg == -d ]] && debugger=1
+done
 
-xterm -T "Agon UART1 (XMODEM: Ctrl-A, S)" -e minicom --device "$tmpdir/terminal" --baudrate "$baud" &
-terminal_pid=$!
+mkdir -p "$tmpdir/minicom-home"
+cat > "$tmpdir/minicom-home/.minirc.dfl" <<EOF
+pu port             $tmpdir/terminal
+pu baudrate         $baud
+pu bits             8
+pu parity           N
+pu stopbits         1
+EOF
+launch_terminal() {
+  xterm -T "Agon UART1 (${baud} baud, 8N1)" -e env HOME="$tmpdir/minicom-home" \
+    minicom --device "$tmpdir/terminal" --baudrate "$baud" -8 &
+  terminal_pid=$!
+}
 
-wait "$emulator_pid"
-wait "$terminal_pid" 2>/dev/null || true
+if (( debugger )); then
+  # The debugger reads commands from stdin, so keep it attached to this TTY.
+  # Open the UART terminal first in this special interactive mode.
+  launch_terminal
+  "$emulator" "${emulator_args[@]}"
+  wait "$terminal_pid" 2>/dev/null || true
+else
+  # Normal mode starts the emulator before its UART terminal client.
+  "$emulator" "${emulator_args[@]}" &
+  emulator_pid=$!
+  sleep 0.5
+  launch_terminal
+  wait "$emulator_pid"
+  wait "$terminal_pid" 2>/dev/null || true
+fi

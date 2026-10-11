@@ -20,14 +20,20 @@ Archive member included to satisfy reference by file (symbol)
                               obj/main.o (_puts)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o) (_putchar)
+/home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uopen.o)
+                              obj/main.o (_mos_uopen)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o) (_mos_fread)
+/home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uclose.o)
+                              obj/main.o (_mos_uclose)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o) (_mos_fputc)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o) (_mos_fopen)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o) (_mos_fclose)
+/home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uputc.o)
+                              obj/main.o (_mos_uputc)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
                               /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o) (__ldivu)
 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
@@ -136,149 +142,156 @@ Linker script and memory map
                 0x00040197                _parse_option
                 0x00040197                _parse_params
 
-.text           0x000401e1     0x1e9a
+.text           0x000401e1     0x1f20
  *(.text)
- .text          0x000401e1      0x12f obj/main.o
-                0x000401e1                _main
- .text          0x00040310       0x44 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
-                0x00040310                _fclose
- .text          0x00040354       0xcc /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
-                0x00040354                _fread
- .text          0x00040420     0x1382 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
-                0x00040420                _npf_vpprintf
-                0x00041549                _npf_pprintf
-                0x00041571                _npf_snprintf
-                0x00041599                _npf_vsnprintf
-                0x00041657                _vprintf
-                0x00041687                _printf
-                0x000416a6                _fprintf
-                0x000416c9                _vfprintf
-                0x000416fe                _vsprintf
-                0x0004171d                _vsnprintf
-                0x00041751                _sprintf
-                0x0004177a                _snprintf
- .text          0x000417a2       0xb6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
-                0x000417a2                _fputc
-                0x00041832                _fput_char
- .text          0x00041858      0x12c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
-                0x00041858                _fopen
-                0x00041919                ___fmodeflags
- .text          0x00041984       0x52 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
-                0x00041984                __stdio_init
- .text          0x000419d6        0x7 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
-                0x000419d6                _putch
-                0x000419d6                __putch
- .text          0x000419dd       0x1f /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
-                0x000419dd                _strchr
- .text          0x000419fc       0x2c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
-                0x000419fc                _puts
- .text          0x00041a28       0x11 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
-                0x00041a28                _putchar
- .text          0x00041a39       0x1a /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
-                0x00041a39                _mos_fread
- .text          0x00041a53       0x16 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
-                0x00041a53                _mos_fputc
- .text          0x00041a69       0x16 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
-                0x00041a69                _mos_fopen
- .text          0x00041a7f        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
-                0x00041a7f                _mos_fclose
- .text          0x00041a88       0x10 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
-                0x00041a88                __ldivu
- .text          0x00041a98       0x30 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
-                0x00041a98                __imuls
-                0x00041a98                __imulu
- .text          0x00041ac8        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
-                0x00041ac8                __lshl
- .text          0x00041ad5        0xb /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
-                0x00041ad5                __lcmpzero
- .text          0x00041ae0       0x10 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
-                0x00041ae0                __lshru
- .text          0x00041af0        0x8 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
-                0x00041af0                __lcmpu
- .text          0x00041af8       0x26 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
-                0x00041af8                __sshl
-                0x00041af8                __ishl
- .text          0x00041b1e       0x1d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
-                0x00041b1e                __fcmp
- .text          0x00041b3b        0x1 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
-                0x00041b3b                __indcallhl
- .text          0x00041b3c        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
-                0x00041b3c                __sshru
- .text          0x00041b49        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
-                0x00041b49                __lneg
- .text          0x00041b56       0x41 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
-                0x00041b56                __ishru
-                0x00041b5b                __ishrs
- .text          0x00041b97        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
-                0x00041b97                __lcmps
- .text          0x00041ba4       0x1c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
-                0x00041ba4                __land
-                0x00041ba9                __iand
-                0x00041baa                __iand.hijack_land
- .text          0x00041bc0        0x8 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
-                0x00041bc0                __idivu
- .text          0x00041bc8       0x1b /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
-                0x00041bc8                __lshrs
-                0x00041bd4                __lshrs.hijack_lshru
- .text          0x00041be3       0x1b /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
-                0x00041be3                __lxor
-                0x00041be7                __ixor
- .text          0x00041bfe        0xa /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
-                0x00041bfe                __bshru
- .text          0x00041c08       0x24 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
-                0x00041c08                __ldvrmu
- .text          0x00041c2c       0x18 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
-                0x00041c2c                __idvrmu
-                0x00041c30                __idvrmu.hijack_a_iters_ude_dividend
- .text          0x00041c44        0x6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
-                0x00041c44                __ladd
- .text          0x00041c4a        0xb /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
-                0x00041c4a                __frameset0
- .text          0x00041c55        0xf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
-                0x00041c55                __setflag
- .text          0x00041c64       0x5c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
-                0x00041c64                __lmuls
-                0x00041c64                __lmulu
- .text          0x00041cc0        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
-                0x00041cc0                __sand
- .text          0x00041cc9        0xe /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
-                0x00041cc9                __frameset
- .text          0x00041cd7       0x2c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
-                0x00041cd7                _atexit
-                0x00041cd7                _on_exit
- .text          0x00041d03       0xdf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
-                0x00041d03                _fgetc
- .text          0x00041de2       0xa9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
-                0x00041de2                _fseek
- .text          0x00041e8b        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
- .text          0x00041e8b        0x5 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
-                0x00041e8b                _getch
- .text          0x00041e90       0x9f /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
-                0x00041e90                _malloc
- .text          0x00041f2f       0xbd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
-                0x00041f2f                _free
- .text          0x00041fec       0x22 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
-                0x00041fec                _sbrk
- .text          0x0004200e        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
-                0x0004200e                _mos_fgetc
- .text          0x00042017       0x1d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
-                0x00042017                _mos_flseek
- .text          0x00042034        0xa /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
-                0x00042034                _mos_getfil
- .text          0x0004203e       0x3d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
-                0x0004203e                _ungetc
+ .text          0x000401e1      0x18f obj/main.o
+                0x000401e1                _bios_handoff
+                0x00040273                _main
+ .text          0x00040370       0x44 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
+                0x00040370                _fclose
+ .text          0x000403b4       0xcc /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
+                0x000403b4                _fread
+ .text          0x00040480     0x1382 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
+                0x00040480                _npf_vpprintf
+                0x000415a9                _npf_pprintf
+                0x000415d1                _npf_snprintf
+                0x000415f9                _npf_vsnprintf
+                0x000416b7                _vprintf
+                0x000416e7                _printf
+                0x00041706                _fprintf
+                0x00041729                _vfprintf
+                0x0004175e                _vsprintf
+                0x0004177d                _vsnprintf
+                0x000417b1                _sprintf
+                0x000417da                _snprintf
+ .text          0x00041802       0xb6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
+                0x00041802                _fputc
+                0x00041892                _fput_char
+ .text          0x000418b8      0x12c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
+                0x000418b8                _fopen
+                0x00041979                ___fmodeflags
+ .text          0x000419e4       0x52 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
+                0x000419e4                __stdio_init
+ .text          0x00041a36        0x7 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
+                0x00041a36                _putch
+                0x00041a36                __putch
+ .text          0x00041a3d       0x1f /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
+                0x00041a3d                _strchr
+ .text          0x00041a5c       0x2c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
+                0x00041a5c                _puts
+ .text          0x00041a88       0x11 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
+                0x00041a88                _putchar
+ .text          0x00041a99       0x13 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uopen.o)
+                0x00041a99                _mos_uopen
+ .text          0x00041aac       0x1a /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
+                0x00041aac                _mos_fread
+ .text          0x00041ac6        0x5 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uclose.o)
+                0x00041ac6                _mos_uclose
+ .text          0x00041acb       0x16 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
+                0x00041acb                _mos_fputc
+ .text          0x00041ae1       0x16 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
+                0x00041ae1                _mos_fopen
+ .text          0x00041af7        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
+                0x00041af7                _mos_fclose
+ .text          0x00041b00        0xe /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uputc.o)
+                0x00041b00                _mos_uputc
+ .text          0x00041b0e       0x10 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
+                0x00041b0e                __ldivu
+ .text          0x00041b1e       0x30 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
+                0x00041b1e                __imuls
+                0x00041b1e                __imulu
+ .text          0x00041b4e        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
+                0x00041b4e                __lshl
+ .text          0x00041b5b        0xb /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
+                0x00041b5b                __lcmpzero
+ .text          0x00041b66       0x10 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
+                0x00041b66                __lshru
+ .text          0x00041b76        0x8 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
+                0x00041b76                __lcmpu
+ .text          0x00041b7e       0x26 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
+                0x00041b7e                __sshl
+                0x00041b7e                __ishl
+ .text          0x00041ba4       0x1d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
+                0x00041ba4                __fcmp
+ .text          0x00041bc1        0x1 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
+                0x00041bc1                __indcallhl
+ .text          0x00041bc2        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
+                0x00041bc2                __sshru
+ .text          0x00041bcf        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
+                0x00041bcf                __lneg
+ .text          0x00041bdc       0x41 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
+                0x00041bdc                __ishru
+                0x00041be1                __ishrs
+ .text          0x00041c1d        0xd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
+                0x00041c1d                __lcmps
+ .text          0x00041c2a       0x1c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
+                0x00041c2a                __land
+                0x00041c2f                __iand
+                0x00041c30                __iand.hijack_land
+ .text          0x00041c46        0x8 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
+                0x00041c46                __idivu
+ .text          0x00041c4e       0x1b /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
+                0x00041c4e                __lshrs
+                0x00041c5a                __lshrs.hijack_lshru
+ .text          0x00041c69       0x1b /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
+                0x00041c69                __lxor
+                0x00041c6d                __ixor
+ .text          0x00041c84        0xa /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
+                0x00041c84                __bshru
+ .text          0x00041c8e       0x24 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
+                0x00041c8e                __ldvrmu
+ .text          0x00041cb2       0x18 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
+                0x00041cb2                __idvrmu
+                0x00041cb6                __idvrmu.hijack_a_iters_ude_dividend
+ .text          0x00041cca        0x6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
+                0x00041cca                __ladd
+ .text          0x00041cd0        0xb /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
+                0x00041cd0                __frameset0
+ .text          0x00041cdb        0xf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
+                0x00041cdb                __setflag
+ .text          0x00041cea       0x5c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
+                0x00041cea                __lmuls
+                0x00041cea                __lmulu
+ .text          0x00041d46        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
+                0x00041d46                __sand
+ .text          0x00041d4f        0xe /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
+                0x00041d4f                __frameset
+ .text          0x00041d5d       0x2c /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+                0x00041d5d                _atexit
+                0x00041d5d                _on_exit
+ .text          0x00041d89       0xdf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
+                0x00041d89                _fgetc
+ .text          0x00041e68       0xa9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
+                0x00041e68                _fseek
+ .text          0x00041f11        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
+ .text          0x00041f11        0x5 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
+                0x00041f11                _getch
+ .text          0x00041f16       0x9f /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
+                0x00041f16                _malloc
+ .text          0x00041fb5       0xbd /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
+                0x00041fb5                _free
+ .text          0x00042072       0x22 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
+                0x00042072                _sbrk
+ .text          0x00042094        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
+                0x00042094                _mos_fgetc
+ .text          0x0004209d       0x1d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
+                0x0004209d                _mos_flseek
+ .text          0x000420ba        0xa /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
+                0x000420ba                _mos_getfil
+ .text          0x000420c4       0x3d /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
+                0x000420c4                _ungetc
 
-.init_array     0x0004207b        0x0
+.init_array     0x00042101        0x0
  *(.init_array)
- .init_array    0x0004207b        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .init_array    0x00042101        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
 
-.ctors          0x0004207b        0x0
+.ctors          0x00042101        0x0
  *(.ctors)
- .ctors         0x0004207b        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .ctors         0x00042101        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
 
-.dtors          0x0004207b        0x0
+.dtors          0x00042101        0x0
  *(.dtors)
- .dtors         0x0004207b        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .dtors         0x00042101        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
 
 .comment        0x00000000      0x5f1
  .comment       0x00000000       0x77 obj/main.o
@@ -295,147 +308,153 @@ Linker script and memory map
  .comment       0x00000510       0x6a /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
  .comment       0x0000057a       0x77 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
 
-.fini_array     0x0004207b        0x0
+.fini_array     0x00042101        0x0
  *(.fini_array)
- .fini_array    0x0004207b        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .fini_array    0x00042101        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
 
-.rodata         0x0004207b      0x120
+.rodata         0x00042101      0x139
  *(.rodata)
- .rodata        0x0004207b       0x62 obj/main.o
- .rodata        0x000420dd       0xa5 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
- .rodata        0x00042182        0x4 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
- .rodata        0x00042186        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
-                0x00042186                ___null_literal_str
-                0x0004218d                ___end_of_line_str
- .rodata        0x0004218f        0xc /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .rodata        0x00042101       0x7b obj/main.o
+ .rodata        0x0004217c       0xa5 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
+ .rodata        0x00042221        0x4 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
+ .rodata        0x00042225        0x9 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
+                0x00042225                ___null_literal_str
+                0x0004222c                ___end_of_line_str
+ .rodata        0x0004222e        0xc /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
 
-.data           0x0004219b       0x4e
+.data           0x0004223a       0x4e
  *(.data)
- .data          0x0004219b        0x3 obj/main.o
-                0x0004219b                ___enter_bios
- .data          0x0004219e        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
- .data          0x0004219e        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
- .data          0x0004219e        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
- .data          0x0004219e        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
- .data          0x0004219e        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
- .data          0x0004219e        0xf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
-                0x0004219e                _stdin
-                0x000421a3                _stdout
-                0x000421a8                _stderr
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
- .data          0x000421ad        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
- .data          0x000421ad       0x39 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
-                0x000421e0                _exit.sp
-                0x000421e3                _sys_vars
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
- .data          0x000421e6        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
- .data          0x000421e6        0x3 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
-                0x000421e6                __sbrkbase
- .data          0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
- .data          0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
- .data          0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
- .data          0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
+ .data          0x0004223a        0x3 obj/main.o
+                0x0004223a                ___enter_bios
+ .data          0x0004223d        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
+ .data          0x0004223d        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
+ .data          0x0004223d        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
+ .data          0x0004223d        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
+ .data          0x0004223d        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
+ .data          0x0004223d        0xf /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
+                0x0004223d                _stdin
+                0x00042242                _stdout
+                0x00042247                _stderr
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uopen.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uclose.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uputc.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
+ .data          0x0004224c        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
+ .data          0x0004224c       0x39 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+                0x0004227f                _exit.sp
+                0x00042282                _sys_vars
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
+ .data          0x00042285        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
+ .data          0x00042285        0x3 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
+                0x00042285                __sbrkbase
+ .data          0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
+ .data          0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
+ .data          0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
+ .data          0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
 
-.bss            0x000421e9       0x31
-                0x000421e9                        bss_start = .
+.bss            0x00042288       0x31
+                0x00042288                        bss_start = .
  *(.bss .bss*)
- .bss           0x000421e9        0x0 obj/main.o
- .bss           0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
- .bss           0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
- .bss           0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
- .bss           0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
- .bss           0x000421e9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
- .bss           0x000421e9       0x28 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
-                0x000421e9                __file_streams
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
- .bss           0x00042211        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
- .bss           0x00042211        0x3 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
-                0x00042211                _errno
- .bss           0x00042214        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
- .bss           0x00042214        0x6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
-                0x00042214                __alloc_base
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
- .bss           0x0004221a        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
-                0x0004221a                        bss_end = .
+ .bss           0x00042288        0x0 obj/main.o
+ .bss           0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fclose.o)
+ .bss           0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fread.o)
+ .bss           0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(nanoprintf.o)
+ .bss           0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fputc.o)
+ .bss           0x00042288        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fopen.o)
+ .bss           0x00042288       0x28 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(files.o)
+                0x00042288                __file_streams
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putch.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(strchr.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(puts.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(putchar.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uopen.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fread.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uclose.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fputc.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fopen.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fclose.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_uputc.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldivu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(imulu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshl.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpzero.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshru.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmpu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishl.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fpcmp.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(indcallhl.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sshru.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lneg.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ishrs.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lcmps.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(and.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idivu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lshrs.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(xor.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(bshru.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ldvrmu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(idvrmu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ladd.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset0.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(setflag.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(lmulu.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sand.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(frameset.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(crt0.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fgetc.o)
+ .bss           0x000422b0        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(fseek.o)
+ .bss           0x000422b0        0x3 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(errno.o)
+                0x000422b0                _errno
+ .bss           0x000422b3        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(getch.o)
+ .bss           0x000422b3        0x6 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(malloc.c.o)
+                0x000422b3                __alloc_base
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(free.c.o)
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(sbrk.o)
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_fgetc.o)
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_flseek.o)
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(mos_getfil.o)
+ .bss           0x000422b9        0x0 /home/emfrom/src/tgz-install/agondev/lib/libagon.a(ungetc.o)
+                0x000422b9                        bss_end = .
                 0x000b0000                        __stack = (RAM_START + RAM_SIZE)
-                0x000421e9                        ___low_bss = bss_start
+                0x00042288                        ___low_bss = bss_start
                 0x00000031                        ___len_bss = SIZEOF (.bss)
-                0x0004221a                        ___heapbot = bss_end
+                0x000422b9                        ___heapbot = bss_end
                 0x000b0000                        ___heaptop = (RAM_START + RAM_SIZE)
                 0x00000001                        ___run_clearbss = (___len_bss > 0x0)
                 0x00000000                        ___init_array_count = (SIZEOF (.init_array) / 0x3)
@@ -452,10 +471,10 @@ Linker script and memory map
                 0x00000100                        ___fini_count_a = ((((___fini_count - 0x1) >> 0x10) & 0xff) + 0x1)
                 0x00000100                        ___fini_count_b = (((___fini_count - 0x1) & 0xff) + 0x1)
                 0x00000100                        ___fini_count_c = ((((___fini_count - 0x1) >> 0x8) & 0xff) + 0x1)
-                0x0004207b                        ___init_array_functions = (SIZEOF (.init_array) + ADDR (.init_array))
-                0x0004207b                        ___init_ctors_functions = (SIZEOF (.ctors) + ADDR (.ctors))
-                0x0004207b                        ___fini_dtors_functions = (SIZEOF (.dtors) + ADDR (.dtors))
-                0x0004207b                        ___fini_array_functions = (SIZEOF (.fini_array) + ADDR (.fini_array))
+                0x00042101                        ___init_array_functions = (SIZEOF (.init_array) + ADDR (.init_array))
+                0x00042101                        ___init_ctors_functions = (SIZEOF (.ctors) + ADDR (.ctors))
+                0x00042101                        ___fini_dtors_functions = (SIZEOF (.dtors) + ADDR (.dtors))
+                0x00042101                        ___fini_array_functions = (SIZEOF (.fini_array) + ADDR (.fini_array))
 LOAD obj/main.o
 LOAD /home/emfrom/src/tgz-install/agondev/lib/libagon.a
 OUTPUT(bin/ramtest.noname.bin binary)

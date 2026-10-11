@@ -20,6 +20,34 @@ static void delay_50ms(void)
 
 void (*__enter_bios)(void) = (void (*)(void))ONCHIP_RAM_EXEC_BASE;
 
+__attribute__((noinline, used, noreturn))
+void bios_handoff(void)
+{
+    /* No MOS calls beyond this point. */
+    __asm__("di");
+
+    /* Disable device-level interrupts before disabling the CPU interrupt flag. */
+    IO(UART0_IER) = 0x00;
+    IO(UART1_IER) = 0x00;
+    IO(TMR0_CTL) = 0x00;
+    IO(TMR1_CTL) = 0x00;
+    IO(TMR2_CTL) = 0x00;
+    IO(TMR3_CTL) = 0x00;
+    IO(TMR4_CTL) = 0x00;
+    IO(TMR5_CTL) = 0x00;
+    delay_50ms();
+
+    /* Disable Flash, then map the on-chip SRAM into page zero. */
+    IO(FLASH_CTRL) &= (uint8_t)~0x08;
+    delay_50ms();
+    IO(RAM_ADDR_U) = 0x00;
+    IO(RAM_CTL) |= 0x80;
+    delay_50ms();
+
+    __enter_bios();
+    for (;;) { }
+}
+
 int main(void)
 {
     /* Load BIOS into on chip RAM */
@@ -38,14 +66,27 @@ int main(void)
     }
     fclose(f);
     
-    /* Starting MOS shutdown */
-    puts("Closing MOS\n");
+    /* Configure UART1 through MOS first and report shutdown on that link. */
+    UART uart1Settings = {0};
+    uart1Settings.baudRate = 115200;
+    uart1Settings.dataBits = 8;
+    uart1Settings.stopBits = 1;
+    uart1Settings.parity = 0;
+    uart1Settings.flowcontrol = 0;
+    uart1Settings.eir = 0;
+    mos_uopen(&uart1Settings);
+
+    puts("Shutting down MOS");
+    static const char shutdownMessage[] = "Shutting down MOS\r\n";
+    for (size_t i = 0; i < sizeof(shutdownMessage) - 1; ++i)
+        mos_uputc(shutdownMessage[i]);
+    mos_uclose();
     delay_50ms();
 
     /* Send VDU 21 directly to the VDP through the MOS RST 10h vector. */
     __asm__ volatile (
         "ld a, 21\n\t"
-        "rst 0x10"
+        "rst.lis 0x10"
         :
         :
         : "a"
@@ -60,32 +101,7 @@ int main(void)
     IO(UART0_MCTL) = 0; 
     delay_50ms();
 
-    //Leave interrupts off until BIOS has set it's stack up
-    __asm__("di"); 
-    
-    /* Disable device-level interrupts */
-    IO(UART0_IER) = 0x00;
-    IO(UART1_IER) = 0x00;
-    IO(TMR0_CTL) = 0x00;
-    IO(TMR1_CTL) = 0x00;
-    IO(TMR2_CTL) = 0x00;
-    IO(TMR3_CTL) = 0x00;
-    IO(TMR4_CTL) = 0x00;
-    IO(TMR5_CTL) = 0x00;
-    delay_50ms();
-
-
-
-    /* Disable Flash memory-space access before remapping SRAM into page 0. */
-    IO(FLASH_CTRL) &= (uint8_t)~0x08; // FLASH_EN = 0
-    delay_50ms();
-    
-    /* F92 SRAM maps to {RAM_ADDR_U, 0xE000}..{RAM_ADDR_U, 0xFFFF}. */
-    IO(RAM_ADDR_U) = 0x00;
-    IO(RAM_CTL) |= 0x80;              // RAM_EN = 1; other bits are reserved
-    delay_50ms();
-
-    __enter_bios(); //Will never return
+    bios_handoff();
 
     return EXIT_FAILURE;
 }
