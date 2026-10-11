@@ -7,7 +7,7 @@
 	.assume ADL = 1
 
 	.global bios_entry
-	.global bios_uart1_tx_put, bios_uart1_rx_get
+	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
 	.global io_putchar, io_getchar, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
 	.global bios_rs_overflow, bios_rs_ring, bios_ts_ring
@@ -338,6 +338,28 @@ io_puts:
 	inc hl
 	jr io_puts
 
+;; Busy-wait for about 50 ms at 18.432 MHz (~921,600 CPU cycles).
+;; This uses only CPU cycles; no peripheral timer is required.
+bios_wait:
+	push af
+	push bc
+	push de
+	ld d, BIOS_WAIT_OUTER
+bios_wait_outer:
+	ld c, 0
+bios_wait_middle:
+	ld b, BIOS_WAIT_INNER
+bios_wait_inner:
+	djnz bios_wait_inner
+	dec c
+	jr nz, bios_wait_middle
+	dec d
+	jr nz, bios_wait_outer
+	pop de
+	pop bc
+	pop af
+	ret
+
 bios_loaded_message:
 	.asciz "BIOS Loaded\n"
 
@@ -441,6 +463,8 @@ bios_stack:
 
 	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
 	.set EXTERNAL_RAM_LAST_PAGE, 0x08
+	.set BIOS_WAIT_OUTER, 4
+	.set BIOS_WAIT_INNER, 0xE0
 
 	.set UART1_LSR_DR, 0x01
 	.set UART1_IER_RIE, 0x01
