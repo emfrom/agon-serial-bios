@@ -6,7 +6,7 @@
 
 	.assume ADL = 1
 
-	.global bios_entry, bios_xmodem_receive, bios_xmodem_wp
+	.global bios_entry, bios_xmodem_receive, bios_xmodem_wp, bios_uptime_10ms
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
 	.global io_putchar, io_getchar, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
@@ -95,6 +95,18 @@ bios_copy_memory_message:
 	or a
 	jr nz, bios_copy_memory_message
 
+	;; Start PRT0 at 10 ms (18.432 MHz / 4 / 46080).
+	ld hl, BIOS_ZERO
+	ld (bios_uptime_10ms), hl
+	xor a
+	out0 (TMR0_CTL), a
+	ld a, TMR0_RELOAD_LOW_10MS
+	out0 (TMR0_RR_L), a
+	ld a, TMR0_RELOAD_HIGH_10MS
+	out0 (TMR0_RR_H), a
+	ld a, TMR0_CTL_10MS
+	out0 (TMR0_CTL), a
+
 	;; Clear stale receive/line status before enabling IRQs.
 	in0 a, (UART1_LSR)
 	ld a, UART1_IER_INIT          ;; RX and line-status interrupts
@@ -162,8 +174,13 @@ bios_uart1_irq_next:
 bios_uart1_irq_line_status:
 	in0 a, (UART1_LSR)            ;; Reading LSR clears line-status causes.
 
-;; Drain all currently available bytes, not just the FIFO's first byte.
 bios_uart1_rx_service:
+	call bios_uart1_rx_drain
+	jp bios_uart1_irq_done
+
+;; Drain all available hardware RX bytes into rs. Also called by PRT0 so a
+;; sub-threshold UART FIFO is serviced on the next 10 ms tick.
+bios_uart1_rx_drain:
 bios_uart1_rx_loop:
 	in0 a, (UART1_LSR)
 	and UART1_LSR_DR              ;; Receiver data ready?
@@ -198,7 +215,29 @@ bios_uart1_rx_full:
 
 bios_uart1_rx_done:
 	call bios_uart1_update_rts
-	jp bios_uart1_irq_done
+	ret
+
+;; PRT0 wakes HALT, advances uptime, and drains residual UART1 FIFO bytes.
+bios_timer0_isr:
+	push af
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+	in0 a, (TMR0_CTL)             ;; Reading CTL clears the timer IRQ flag.
+	ld hl, (bios_uptime_10ms)
+	inc hl
+	ld (bios_uptime_10ms), hl
+	call bios_uart1_rx_drain
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	pop af
+	ei
+	reti.l
 
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
 ;; slots. Leave TIE enabled only when software data remains queued.
@@ -407,16 +446,48 @@ bios_xmodem_receive:
 	xor a
 	ld (bios_xmodem_have_block), a
 
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_ARM_THRESHOLD
+	ld a, 0
+	jr c, bios_xmodem_initial_phase_ready
+	inc a
+bios_xmodem_initial_phase_ready:
+	ld (bios_xmodem_retry_armed), a
 	ld a, XMODEM_CRC_REQUEST
 	call io_putchar
 bios_xmodem_wait_start:
-	call io_getchar
+	;; Prefer a byte already in the software ring; HALT until UART or PRT0 IRQ.
+	call bios_uart1_rx_get
+	jr nc, bios_xmodem_start_byte
+	halt
+	call bios_uart1_rx_get
+	jr nc, bios_xmodem_start_byte
+	jr bios_xmodem_check_retry
+bios_xmodem_start_byte:
 	cp XMODEM_SOH
 	jr z, bios_xmodem_packet
 	cp XMODEM_EOT
 	jp z, bios_xmodem_complete
 	cp XMODEM_CAN
 	jp z, bios_xmodem_cancelled
+bios_xmodem_check_retry:
+	ld a, (bios_xmodem_retry_armed)
+	or a
+	jr z, bios_xmodem_arm_retry
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_SEND_THRESHOLD
+	jr nc, bios_xmodem_wait_start
+	xor a
+	ld (bios_xmodem_retry_armed), a
+	ld a, XMODEM_CRC_REQUEST
+	call io_putchar
+	jr bios_xmodem_wait_start
+bios_xmodem_arm_retry:
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_ARM_THRESHOLD
+	jr c, bios_xmodem_wait_start
+	ld a, 1
+	ld (bios_xmodem_retry_armed), a
 	jr bios_xmodem_wait_start
 
 bios_xmodem_wait_frame:
@@ -622,7 +693,7 @@ bios_unused_02:          .dw 0
 bios_unused_04:          .dw 0
 bios_unused_06:          .dw 0
 bios_flash_vector:       .dw bios_unhandled_isr ; 0x08 Flash
-bios_timer0_vector:      .dw bios_unhandled_isr ; 0x0A PRT0
+bios_timer0_vector:      .dw bios_timer0_isr    ; 0x0A PRT0
 bios_timer1_vector:      .dw bios_unhandled_isr ; 0x0C PRT1
 bios_timer2_vector:      .dw bios_unhandled_isr ; 0x0E PRT2
 bios_timer3_vector:      .dw bios_unhandled_isr ; 0x10 PRT3
@@ -678,7 +749,9 @@ bios_ts_tail:     .db 0
 bios_rs_overflow: .db 0
 
 	.org 0xFC10
+bios_uptime_10ms:           .ds 3, 0
 bios_xmodem_wp:             .ds 3, 0
+bios_xmodem_retry_armed:    .db 0
 bios_xmodem_expected:       .db 0
 bios_xmodem_have_block:     .db 0
 bios_xmodem_block:          .db 0
@@ -720,6 +793,9 @@ bios_stack:
 	.set UART1_LSR, 0xD5
 	.set UART1_MSR, 0xD6
 	.set CLK_PPD1, 0xDB
+	.set TMR0_CTL, 0x80
+	.set TMR0_RR_L, 0x81
+	.set TMR0_RR_H, 0x82
 	.set PC_DDR, 0x9F
 	.set PC_ALT1, 0xA0
 	.set PC_ALT2, 0xA1
@@ -739,8 +815,13 @@ bios_stack:
 	.set XMODEM_CRC_REQUEST, 0x43
 	.set XMODEM_CRC_POLY_HI, 0x10
 	.set XMODEM_CRC_POLY_LO, 0x21
+	.set XMODEM_RETRY_ARM_THRESHOLD, 201
+	.set XMODEM_RETRY_SEND_THRESHOLD, 200
 	.set XMODEM_STATUS_CANCELLED, 1
 	.set XMODEM_STATUS_ERROR, 2
+	.set TMR0_RELOAD_LOW_10MS, 0x00
+	.set TMR0_RELOAD_HIGH_10MS, 0xB4
+	.set TMR0_CTL_10MS, 0x53
 	.set BIOS_WAIT_OUTER, 4
 	.set BIOS_WAIT_INNER, 0xE0
 

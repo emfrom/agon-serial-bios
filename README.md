@@ -137,14 +137,19 @@ Assembly entry points:
 
 At startup the BIOS prints `XMODEM-CRC loading to 0x010000`, sends `C` to
 request CRC mode, and receives Minicom's 128-byte XMODEM frames through the UART1
-RX ring. It writes each payload and its two CRC bytes to external SRAM, checks
-CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
-no final XOR; high CRC byte first), and moves the write pointer back over the
+RX ring. PRT0 ticks every 10 ms, increments the 24-bit `bios_uptime_10ms` value,
+and drains any residual hardware RX FIFO bytes into that ring. While waiting for
+the first frame, the BIOS resends `C` every 256 ticks (2,560 ms), using the low
+uptime byte crossing the 200 threshold and wrapping below it.
+
+Each frame's payload and two CRC bytes are written to external SRAM, checked
+with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
+no final XOR; high CRC byte first), and the write pointer is moved back over the
 CRC. Bad frames receive NAK; valid frames receive ACK, including retransmitted
 duplicates. EOT is ACKed; the BIOS prints `Load complete` and `Starting`, then
 jumps to `0x010000`.
 
-The receiver uses blocking, interrupt-backed reads with no timeout. XMODEM
+Reads block on UART/timer interrupts; there are no receive timeouts. XMODEM
 transmits complete 128-byte blocks and does not include the exact file length, so
 any final-block padding is also present in memory. Two bytes are reserved for
 the final CRC, limiting a transfer to 4095 blocks (524,160 payload bytes).
@@ -170,5 +175,9 @@ bios_entry
 bios_uart1_isr (UART1 vector 0x1A)
 ├─ RX causes ──> drain UART FIFO into rs, update RTS
 └─ TX-empty ──> fill UART FIFO from ts
+
+bios_timer0_isr (PRT0 vector 0x0A; 10 ms)
+├─ increment bios_uptime_10ms
+└─ drain residual UART1 RX FIFO into rs
 ```
 
