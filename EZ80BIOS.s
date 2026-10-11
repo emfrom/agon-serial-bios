@@ -122,9 +122,15 @@ __bios_copy_memory_message:
 	jr nz, __io_xmodem_failed
 	ld hl, bios_xmodem_complete_message
 	call io_puts
-	ld hl, bios_xmodem_press_key_message
+	ld hl, bios_xmodem_press_r_message
 	call io_puts
+__bios_wait_for_run:
 	call io_getchar
+	cp 'R'
+	jr z, __bios_run_loaded_program
+	cp 'r'
+	jr nz, __bios_wait_for_run
+__bios_run_loaded_program:
 	xor a
 	jp EXTERNAL_RAM_START_ADDRESS
 __io_xmodem_failed:
@@ -356,8 +362,8 @@ bios_xmodem_loading_message:
 	.asciz "Waiting for XMODEM at 0x010000\r\n"
 bios_xmodem_complete_message:
 	.asciz "Load complete\r\n"
-bios_xmodem_press_key_message:
-	.asciz "Press any key to start\r\n"
+bios_xmodem_press_r_message:
+	.asciz "Press R to run\r\n"
 bios_xmodem_failed_message:
 	.asciz "XMODEM-CRC receive failed\r\n"
 

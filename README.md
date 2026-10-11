@@ -174,9 +174,8 @@ Each frame's payload and two CRC bytes are written to external SRAM, checked
 with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
 no final XOR; high CRC byte first), and the write pointer is moved back over the
 CRC. Bad frames receive NAK; valid frames receive ACK, including retransmitted
-duplicates. EOT is ACKed; the BIOS prints `Load complete` and prompts `Press
-any key to start`. It reads and discards one byte, clears `A`, then jumps to
-`0x010000`.
+duplicates. EOT is ACKed; the BIOS prints `Load complete` and prompts `Press R to run`.
+It ignores other input, clears `A` after `R`/`r`, then jumps to `0x010000`.
 
 Reads block on UART/timer interrupts; there are no receive timeouts. XMODEM
 transmits complete 128-byte blocks and does not include the exact file length, so
@@ -198,8 +197,8 @@ bios_entry
 │  ├─ io_getchar (HALT while rs is empty)
 │  ├─ receive 128-byte payload and two CRC bytes
 │  ├─ CRC-16/XMODEM check ──> ACK or NAK
-│  └─ EOT ──> print completion and press-any-key prompt
-│     └─ read/discard key, zero A, jump to 0x010000
+│  └─ EOT ──> print completion and Press R prompt
+│     └─ wait for R/r, zero A, jump to 0x010000
 └─ transfer error ──> print failure, then __bios_idle
 
 __bios_uart1_isr (UART1 vector 0x1A)
