@@ -22,25 +22,6 @@ bios_entry:
 	ld a, BIOS_IVT_PAGE
 	ld i, a
 
-	;; MOS leaves PB1 in rising-edge interrupt mode, and the emulator pulses
-	;; it for VSync. This BIOS does not use VSync; clear any pending edge and
-	;; return PB1 to ordinary input mode before enabling CPU interrupts.
-	in0 a, (PB_DR)
-	or GPIO_B1_MASK
-	out0 (PB_DR), a
-	in0 a, (PB_ALT1)
-	ld b, a
-	ld a, GPIO_B1_MASK
-	cpl
-	and b
-	out0 (PB_ALT1), a
-	in0 a, (PB_ALT2)
-	ld b, a
-	ld a, GPIO_B1_MASK
-	cpl
-	and b
-	out0 (PB_ALT2), a
-
 	;; Power UART1 before configuring it.
 	in0 a, (CLK_PPD1)
 	ld b, a
@@ -442,9 +423,6 @@ bios_stack:
 	.set UART1_LSR, 0xD5
 	.set UART1_MSR, 0xD6
 	.set CLK_PPD1, 0xDB
-	.set PB_DR, 0x9A
-	.set PB_ALT1, 0x9C
-	.set PB_ALT2, 0x9D
 	.set PC_DDR, 0x9F
 	.set PC_ALT1, 0xA0
 	.set PC_ALT2, 0xA1
@@ -471,7 +449,6 @@ bios_stack:
 	.set PORTPIN_ZERO, 0x01
 	.set PORTPIN_ONE, 0x02
 	.set PORTPIN_TWO, 0x04
-	.set GPIO_B1_MASK, PORTPIN_ONE
 	.set UART1_GPIO_PINS, PORTPIN_ZERO | PORTPIN_ONE | PORTPIN_TWO
 	.set BIOS_ZERO, 0
 	.set UART1_BRG_DIVISOR_115200, 10

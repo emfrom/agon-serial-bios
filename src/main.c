@@ -26,6 +26,12 @@ void bios_handoff(void)
     /* No MOS calls beyond this point. */
     __asm__("di");
 
+    /* MOS leaves PB1 in rising-edge interrupt mode for VSync. This BIOS uses
+       UART1 only; clear a pending edge and return PB1 to ordinary input mode. */
+    IO(PB_DR) |= PORTPIN_ONE;
+    IO(PB_ALT1) &= (uint8_t)~PORTPIN_ONE;
+    IO(PB_ALT2) &= (uint8_t)~PORTPIN_ONE;
+
     /* Disable device-level interrupts before disabling the CPU interrupt flag. */
     IO(UART0_IER) = 0x00;
     IO(UART1_IER) = 0x00;
