@@ -9,6 +9,8 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 - `EZ80IO.s` contains the UART1 IO APIs and XMODEM-CRC receiver.
 - `EZ80BIOS_public.inc` declares the public BIOS/IO symbols for both the BIOS
   source and client assembly modules.
+- `helloserial.s` is a small XMODEM-loaded test program; `helloserial.ld` links
+  it against the BIOS symbols and places it at `0x010000`.
 - `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
   and transfers execution to it.
 - `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
@@ -28,8 +30,8 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 ./build.sh
 ```
 
-This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes) and `bin/ramtest.bin`.
-It also copies both files to `sdcard/` in this repository and writes an
+This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), `bin/ramtest.bin`, and
+`bin/helloserial.bin`. It copies the binaries to `sdcard/` and writes an
 `autoexec.txt` that loads and runs the RAM test. The generated card contents
 are ignored by Git. Rebuilding overwrites these files in `sdcard/`.
 
@@ -56,6 +58,10 @@ BIOS testing uses a **patched Fab Agon Emulator** that correctly identifies
 and dispatches interrupt causes on UART0 and UART1. The patch also advances
 peripherals while the CPU is halted and wakes the CPU when an interrupt is
 accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
+
+To test XMODEM, send `bin/helloserial.bin` from Minicom using Xmodem while the
+BIOS is waiting for a transfer. Press a key at the BIOS prompt after the
+transfer; the program prints `Hello, world!` and enters `bios_halt`.
 
 The UART1 end-to-end BIOS smoke test reached the BIOS startup output over the
 serial link. BIOS output uses CRLF so terminal emulators such as Minicom return

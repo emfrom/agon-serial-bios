@@ -340,6 +340,10 @@ __bios_wait_inner:
 	pop af
 	ret
 
+;; Enter the BIOS idle loop without returning; interrupts continue to run.
+bios_halt:
+	jp __bios_idle
+
 	.include "EZ80IO.s"
 
 bios_loaded_message:
