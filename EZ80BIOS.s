@@ -8,7 +8,7 @@
 
 	.global bios_entry, bios_xmodem_receive, bios_xmodem_wp, bios_uptime_10ms
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
-	.global io_putchar, io_getchar, io_puts
+	.global io_putchar, io_getchar, io_nread, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
 	.global bios_rs_overflow, bios_rs_ring, bios_ts_ring
 
@@ -400,6 +400,36 @@ io_getchar_retry:
 	jr io_getchar_retry
 io_getchar_received:
 	ei
+	ret
+
+;; Read exactly BC bytes from UART1 into the 24-bit address in HL.
+;; Preserve the caller's HL/BC values and IX/IY used as working registers.
+io_nread:
+	push hl
+	push bc
+	push ix
+	push iy
+	push hl
+	pop ix
+	push bc
+	pop iy
+io_nread_loop:
+	push iy
+	pop hl
+	ld de, BIOS_ZERO
+	or a
+	sbc hl, de
+	jr z, io_nread_done
+	call io_getchar
+	ld (ix+0), a
+	inc ix
+	dec iy
+	jr io_nread_loop
+io_nread_done:
+	pop iy
+	pop ix
+	pop bc
+	pop hl
 	ret
 
 ;; Blocking NUL-terminated string output. HL points to the first character.

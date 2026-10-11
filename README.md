@@ -128,6 +128,9 @@ Assembly entry points:
   ring is full and retries after an interrupt.
 - `io_getchar`: blocking character input; returns the byte in `A`. It sleeps
   while the RX ring is empty and wakes when the UART1 ISR queues data.
+- `io_nread`: blocking binary input; 24-bit `HL` points to the destination and
+  24-bit `BC` is the exact byte count. It returns only after reading that many
+  bytes, and restores the caller's `HL`, `BC`, `IX`, and `IY` values.
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
 - `bios_xmodem_receive`: receives a file into external RAM and returns status
   in `A` (`0` success, nonzero cancel/error). `bios_xmodem_wp` is the exclusive
