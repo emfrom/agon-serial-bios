@@ -136,9 +136,9 @@ Assembly entry points:
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
 - `io_xmodem_rx`: blocking XMODEM-CRC binary receive; 24-bit `HL` is the start
   address in external SRAM (`0x010000..0x08FF7E`). Returns status in `A`
-  (`0` success, nonzero cancel/error), preserves `HL`, and restores the previous
-  PRT0 vector before returning. `bios_xmodem_wp`
-  is the exclusive end address after the payload bytes.
+  (`0` success, nonzero cancel/error/invalid address), preserves `HL`, and
+  restores the previous PRT0 vector before returning. `bios_xmodem_wp` is the
+  exclusive end address after the payload bytes.
 
 ## XMODEM-CRC receive
 
@@ -147,7 +147,7 @@ At startup the BIOS prints `XMODEM-CRC loading to 0x010000`, then calls
 XMODEM frames through the UART1 RX ring. PRT0 ticks every 10 ms, increments the
 24-bit `bios_uptime_10ms` value, and drains residual hardware RX FIFO bytes into
 the ring. During the handshake, the routine saves the current PRT0 vector and
-temporarily installs `bios_xmodem_start`. That handler discards unrelated RX
+temporarily installs `__io_xmodem_start`. That handler discards unrelated RX
 bytes, leaves SOH/CAN/EOT queued, resends `C` every 256 ticks (2,560 ms), then
 restores the saved vector and tail-jumps to the normal timer ISR. An atomic flag
 byte gates the receiver until the start control byte is queued. The API restores
@@ -157,8 +157,9 @@ Each frame's payload and two CRC bytes are written to external SRAM, checked
 with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
 no final XOR; high CRC byte first), and the write pointer is moved back over the
 CRC. Bad frames receive NAK; valid frames receive ACK, including retransmitted
-duplicates. EOT is ACKed; the BIOS prints `Load complete` and `Starting`, then
-jumps to `0x010000`.
+duplicates. EOT is ACKed; the BIOS prints `Load complete` and prompts `Press
+any key to start`. It reads and discards one byte, clears `A`, then jumps to
+`0x010000`.
 
 Reads block on UART/timer interrupts; there are no receive timeouts. XMODEM
 transmits complete 128-byte blocks and does not include the exact file length, so
@@ -176,24 +177,25 @@ so it works with UART adapters that do not provide modem-status signals.
 bios_entry
 ├─ print startup messages
 ├─ io_xmodem_rx (HL=0x010000)
-│  ├─ bios_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
+│  ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
 │  ├─ io_getchar (HALT while rs is empty)
 │  ├─ receive 128-byte payload and two CRC bytes
 │  ├─ CRC-16/XMODEM check ──> ACK or NAK
-│  └─ EOT ──> print completion, jump to 0x010000
-└─ transfer error ──> print failure, then bios_idle
+│  └─ EOT ──> print completion and press-any-key prompt
+│     └─ read/discard key, zero A, jump to 0x010000
+└─ transfer error ──> print failure, then __bios_idle
 
-bios_uart1_isr (UART1 vector 0x1A)
+__bios_uart1_isr (UART1 vector 0x1A)
 ├─ RX causes ──> drain UART FIFO into rs, update RTS
 └─ TX-empty ──> fill UART FIFO from ts
 
-bios_xmodem_start (temporary PRT0 vector)
+__io_xmodem_start (temporary PRT0 vector)
 ├─ discard unrelated bytes; leave SOH/CAN/EOT queued
 ├─ gate receiver with an atomic start-flag byte
 ├─ resend 'C' on the 256-tick schedule
-└─ restore saved vector, then jump to bios_timer0_isr
+└─ restore saved vector, then jump to __bios_timer0_isr
 
-bios_timer0_isr (PRT0 vector 0x0A; 10 ms)
+__bios_timer0_isr (PRT0 vector 0x0A; 10 ms)
 ├─ increment bios_uptime_10ms
 └─ drain residual UART1 RX FIFO into rs
 ```

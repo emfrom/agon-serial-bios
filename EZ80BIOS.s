@@ -6,7 +6,7 @@
 
 	.assume ADL = 1
 
-	.global bios_entry, io_xmodem_rx, bios_xmodem_start, bios_xmodem_wp, bios_uptime_10ms
+	.global bios_entry, io_xmodem_rx, bios_xmodem_wp, bios_uptime_10ms
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
 	.global io_putchar, io_getchar, io_peek, io_nread, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
@@ -87,13 +87,13 @@ bios_entry:
 	;; Copy the NUL-terminated map message to the first external RAM address.
 	ld hl, bios_memory_mapped_message
 	ld de, EXTERNAL_RAM_START_ADDRESS
-bios_copy_memory_message:
+__bios_copy_memory_message:
 	ld a, (hl)
 	ld (de), a
 	inc hl
 	inc de
 	or a
-	jr nz, bios_copy_memory_message
+	jr nz, __bios_copy_memory_message
 
 	;; Start PRT0 at 10 ms (18.432 MHz / 4 / 46080).
 	ld hl, BIOS_ZERO
@@ -123,26 +123,28 @@ bios_copy_memory_message:
 	ld hl, EXTERNAL_RAM_START_ADDRESS
 	call io_xmodem_rx
 	or a
-	jr nz, bios_xmodem_failed
+	jr nz, __io_xmodem_failed
 	ld hl, bios_xmodem_complete_message
 	call io_puts
-	ld hl, bios_xmodem_starting_message
+	ld hl, bios_xmodem_press_key_message
 	call io_puts
+	call io_getchar
+	xor a
 	jp EXTERNAL_RAM_START_ADDRESS
-bios_xmodem_failed:
+__io_xmodem_failed:
 	ld hl, bios_xmodem_failed_message
 	call io_puts
 
-bios_idle:
+__bios_idle:
 	halt
-	jr bios_idle
+	jr __bios_idle
 
-bios_unhandled_isr:
+__bios_unhandled_isr:
 	reti.l
 
 ;; UART1 interrupt service routine. RX is drained completely into rs; TX is
 ;; filled in 16-byte FIFO bursts from ts. Preserve the interrupted context.
-bios_uart1_isr:
+__bios_uart1_isr:
 	push af
 	push bc
 	push de
@@ -152,40 +154,40 @@ bios_uart1_isr:
 
 ;; Handle one IIR cause per entry. Any remaining enabled cause retriggers
 ;; after RETI; do not spin rereading IIR inside the ISR.
-bios_uart1_irq_next:
+__bios_uart1_irq_next:
 	in0 a, (UART1_IIR)
 	ld b, a
 	and UART1_IIR_INTBIT
-	jp nz, bios_uart1_irq_done
+	jp nz, __bios_uart1_irq_done
 	ld a, b
 	and UART1_IIR_INSTS_MASK
 	cp UART1_IIR_LINE_STATUS     ;; Receiver line-status error
-	jr z, bios_uart1_irq_line_status
+	jr z, __bios_uart1_irq_line_status
 	cp UART1_IIR_RX_DATA_READY
-	jr z, bios_uart1_rx_service
+	jr z, __bios_uart1_rx_service
 	cp UART1_IIR_RX_TIMEOUT
-	jr z, bios_uart1_rx_service
+	jr z, __bios_uart1_rx_service
 	cp UART1_IIR_TX_EMPTY         ;; Transmit FIFO empty
-	jp z, bios_uart1_tx_service
+	jp z, __bios_uart1_tx_service
 
 	;; Modem-status interrupts are disabled; clear any unexpected cause.
 	in0 a, (UART1_MSR)
-	jp bios_uart1_irq_done
+	jp __bios_uart1_irq_done
 
-bios_uart1_irq_line_status:
+__bios_uart1_irq_line_status:
 	in0 a, (UART1_LSR)            ;; Reading LSR clears line-status causes.
 
-bios_uart1_rx_service:
-	call bios_uart1_rx_drain
-	jp bios_uart1_irq_done
+__bios_uart1_rx_service:
+	call __bios_uart1_rx_drain
+	jp __bios_uart1_irq_done
 
 ;; Drain all available hardware RX bytes into rs. Also called by PRT0 so a
 ;; sub-threshold UART FIFO is serviced on the next 10 ms tick.
-bios_uart1_rx_drain:
-bios_uart1_rx_loop:
+__bios_uart1_rx_drain:
+__bios_uart1_rx_loop:
 	in0 a, (UART1_LSR)
 	and UART1_LSR_DR              ;; Receiver data ready?
-	jr z, bios_uart1_rx_done
+	jr z, __bios_uart1_rx_done
 	in0 a, (UART1_RBR)
 	ld c, a                       ;; Preserve byte while checking ring space.
 	ld a, (bios_rs_head)
@@ -194,7 +196,7 @@ bios_uart1_rx_loop:
 	ld d, a                       ;; D = next head
 	ld a, (bios_rs_tail)
 	cp d
-	jr z, bios_uart1_rx_full      ;; One slot is reserved to distinguish full.
+	jr z, __bios_uart1_rx_full      ;; One slot is reserved to distinguish full.
 
 	ld hl, bios_ringbuffer_in
 	ld de, BIOS_ZERO
@@ -204,22 +206,22 @@ bios_uart1_rx_loop:
 	ld a, b
 	inc a
 	ld (bios_rs_head), a
-	call bios_uart1_update_rts
-	jr bios_uart1_rx_loop
+	call __bios_uart1_update_rts
+	jr __bios_uart1_rx_loop
 
-bios_uart1_rx_full:
+__bios_uart1_rx_full:
 	ld a, (bios_rs_overflow)
 	inc a
 	ld (bios_rs_overflow), a
-	call bios_uart1_update_rts
-	jr bios_uart1_rx_loop
+	call __bios_uart1_update_rts
+	jr __bios_uart1_rx_loop
 
-bios_uart1_rx_done:
-	call bios_uart1_update_rts
+__bios_uart1_rx_done:
+	call __bios_uart1_update_rts
 	ret
 
 ;; PRT0 wakes HALT, advances uptime, and drains residual UART1 FIFO bytes.
-bios_timer0_isr:
+__bios_timer0_isr:
 	push af
 	push bc
 	push de
@@ -230,7 +232,7 @@ bios_timer0_isr:
 	ld hl, (bios_uptime_10ms)
 	inc hl
 	ld (bios_uptime_10ms), hl
-	call bios_uart1_rx_drain
+	call __bios_uart1_rx_drain
 	pop iy
 	pop ix
 	pop hl
@@ -240,7 +242,7 @@ bios_timer0_isr:
 	ei
 	reti.l
 
-bios_xmodem_restore_timer_vector:
+__io_xmodem_restore_timer_vector:
 	ld a, (bios_timer0_saved_vector)
 	ld (bios_timer0_vector), a
 	ld a, (bios_timer0_saved_vector+1)
@@ -250,69 +252,69 @@ bios_xmodem_restore_timer_vector:
 ;; Temporary PRT0 handler during XMODEM startup. It never returns directly
 ;; from the interrupt: after peeking/handshake work it restores registers and
 ;; tail-jumps to the regular timer ISR, which performs RETI.L.
-bios_xmodem_start:
+__io_xmodem_start:
 	push af
 	push bc
 	push de
 	push hl
 	push ix
 	push iy
-bios_xmodem_start_scan:
+__io_xmodem_start_scan:
 	call io_peek
-	jr c, bios_xmodem_start_retry
+	jr c, __io_xmodem_start_retry
 	cp XMODEM_SOH
-	jr z, bios_xmodem_start_detected
+	jr z, __io_xmodem_start_detected
 	cp XMODEM_EOT
-	jr z, bios_xmodem_start_detected
+	jr z, __io_xmodem_start_detected
 	cp XMODEM_CAN
-	jr z, bios_xmodem_start_detected
+	jr z, __io_xmodem_start_detected
 	;; Discard unrelated bytes so an old byte cannot hide the SOH behind it.
 	call bios_uart1_rx_get
-	jr bios_xmodem_start_scan
+	jr __io_xmodem_start_scan
 
-bios_xmodem_start_retry:
+__io_xmodem_start_retry:
 	ld a, (bios_xmodem_retry_armed)
 	or a
-	jr z, bios_xmodem_start_arm_retry
+	jr z, __io_xmodem_start_arm_retry
 	ld a, (bios_uptime_10ms)
 	cp XMODEM_RETRY_SEND_THRESHOLD
-	jr nc, bios_xmodem_start_resume
+	jr nc, __io_xmodem_start_resume
 	xor a
 	ld (bios_xmodem_retry_armed), a
 	ld a, XMODEM_CRC_REQUEST
 	call bios_uart1_tx_put       ;; Nonblocking: never wait inside an ISR.
-	jr bios_xmodem_start_resume
-bios_xmodem_start_arm_retry:
+	jr __io_xmodem_start_resume
+__io_xmodem_start_arm_retry:
 	ld a, (bios_uptime_10ms)
 	cp XMODEM_RETRY_ARM_THRESHOLD
-	jr c, bios_xmodem_start_resume
+	jr c, __io_xmodem_start_resume
 	ld a, 1
 	ld (bios_xmodem_retry_armed), a
-	jr bios_xmodem_start_resume
+	jr __io_xmodem_start_resume
 
-bios_xmodem_start_detected:
-	call bios_xmodem_restore_timer_vector
+__io_xmodem_start_detected:
+	call __io_xmodem_restore_timer_vector
 	ld a, 1
 	ld (bios_xmodem_start_flag), a
-bios_xmodem_start_resume:
+__io_xmodem_start_resume:
 	pop iy
 	pop ix
 	pop hl
 	pop de
 	pop bc
 	pop af
-	jp bios_timer0_isr
+	jp __bios_timer0_isr
 
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
 ;; slots. Leave TIE enabled only when software data remains queued.
-bios_uart1_tx_service:
+__bios_uart1_tx_service:
 	ld c, UART1_TX_FIFO_CAPACITY
-bios_uart1_tx_loop:
+__bios_uart1_tx_loop:
 	ld a, (bios_ts_tail)
 	ld b, a
 	ld a, (bios_ts_head)
 	cp b
-	jr z, bios_uart1_tx_disable
+	jr z, __bios_uart1_tx_disable
 
 	ld hl, bios_ringbuffer_out
 	ld de, BIOS_ZERO
@@ -324,34 +326,34 @@ bios_uart1_tx_loop:
 	ld a, b
 	ld (bios_ts_tail), a
 	dec c
-	jr nz, bios_uart1_tx_loop
+	jr nz, __bios_uart1_tx_loop
 
 	;; The FIFO is full. If that also emptied ts, stop empty-FIFO IRQs.
 	ld a, (bios_ts_head)
 	ld b, a
 	ld a, (bios_ts_tail)
 	cp b
-	jr z, bios_uart1_tx_disable
-	call bios_uart1_tie_enable
-	jp bios_uart1_irq_done
+	jr z, __bios_uart1_tx_disable
+	call __bios_uart1_tie_enable
+	jp __bios_uart1_irq_done
 
-bios_uart1_tx_disable:
-	call bios_uart1_tie_disable
-	jp bios_uart1_irq_done
+__bios_uart1_tx_disable:
+	call __bios_uart1_tie_disable
+	jp __bios_uart1_irq_done
 
-bios_uart1_tie_enable:
+__bios_uart1_tie_enable:
 	in0 a, (UART1_IER)
 	or UART1_IER_TIE              ;; Keep refilling while software TX data remains.
 	out0 (UART1_IER), a
 	ret
 
-bios_uart1_tie_disable:
+__bios_uart1_tie_disable:
 	in0 a, (UART1_IER)
 	and UART1_IER_TIE_CLEAR       ;; Preserve RX and line-status enables.
 	out0 (UART1_IER), a
 	ret
 
-bios_uart1_irq_done:
+__bios_uart1_irq_done:
 	pop iy
 	pop ix
 	pop hl
@@ -363,7 +365,7 @@ bios_uart1_irq_done:
 
 ;; Hysteresis: deassert RTS below 33 free slots; reassert only at 133 free
 ;; slots (one complete XMODEM/CRC packet). Keep the current state in between.
-bios_uart1_update_rts:
+__bios_uart1_update_rts:
 	ld a, (bios_rs_tail)
 	ld b, a
 	ld a, (bios_rs_head)
@@ -372,13 +374,13 @@ bios_uart1_update_rts:
 	sub c
 	dec a                         ;; free = tail - head - 1 (modulo 256)
 	cp BIOS_RS_RTS_LOW_WATERMARK
-	jr c, bios_uart1_rts_deassert
+	jr c, __bios_uart1_rts_deassert
 	cp BIOS_RS_RTS_REASSERT_WATERMARK
 	ret c                         ;; Preserve current RTS in the hysteresis band.
 	ld a, UART1_MCTL_RTS          ;; MCTL RTS=1 drives active-low RTS asserted.
 	out0 (UART1_MCTL), a
 	ret
-bios_uart1_rts_deassert:
+__bios_uart1_rts_deassert:
 	xor a                         ;; MCTL RTS=0 deasserts active-low RTS.
 	out0 (UART1_MCTL), a
 	ret
@@ -393,7 +395,7 @@ bios_uart1_tx_put:
 	ld d, a
 	ld a, (bios_ts_tail)
 	cp d
-	jr z, bios_uart1_tx_put_full
+	jr z, __bios_uart1_tx_put_full
 	ld hl, bios_ringbuffer_out
 	ld de, BIOS_ZERO
 	ld e, b
@@ -407,7 +409,7 @@ bios_uart1_tx_put:
 	out0 (UART1_IER), a
 	or a                         ;; Clear carry for success.
 	ret
-bios_uart1_tx_put_full:
+__bios_uart1_tx_put_full:
 	scf
 	ret
 
@@ -419,7 +421,7 @@ bios_uart1_rx_get:
 	ld b, a
 	ld a, (bios_rs_head)
 	cp b
-	jr z, bios_uart1_rx_get_empty
+	jr z, __bios_uart1_rx_get_empty
 	ld hl, bios_ringbuffer_in
 	ld de, BIOS_ZERO
 	ld e, b
@@ -429,11 +431,11 @@ bios_uart1_rx_get:
 	inc b
 	ld a, b
 	ld (bios_rs_tail), a
-	call bios_uart1_update_rts
+	call __bios_uart1_update_rts
 	pop af
 	or a                           ;; Clear carry for success.
 	ret
-bios_uart1_rx_get_empty:
+__bios_uart1_rx_get_empty:
 	scf
 	ret
 
@@ -533,16 +535,16 @@ bios_wait:
 	push bc
 	push de
 	ld d, BIOS_WAIT_OUTER
-bios_wait_outer:
+__bios_wait_outer:
 	ld c, 0
-bios_wait_middle:
+__bios_wait_middle:
 	ld b, BIOS_WAIT_INNER
-bios_wait_inner:
-	djnz bios_wait_inner
+__bios_wait_inner:
+	djnz __bios_wait_inner
 	dec c
-	jr nz, bios_wait_middle
+	jr nz, __bios_wait_middle
 	dec d
-	jr nz, bios_wait_outer
+	jr nz, __bios_wait_outer
 	pop de
 	pop bc
 	pop af
@@ -551,15 +553,15 @@ bios_wait_inner:
 ;; Install the temporary PRT0 vector and request XMODEM-CRC until a start
 ;; control byte is visible in rs. The ISR discards unrelated bytes but leaves
 ;; SOH/CAN/EOT queued for the receiver.
-bios_xmodem_wait_for_start:
+__io_xmodem_wait_for_start:
 	xor a
 	ld (bios_xmodem_start_flag), a
 	ld a, (bios_uptime_10ms)
 	cp XMODEM_RETRY_ARM_THRESHOLD
 	ld a, 0
-	jr c, bios_xmodem_start_phase_ready
+	jr c, __io_xmodem_start_phase_ready
 	inc a
-bios_xmodem_start_phase_ready:
+__io_xmodem_start_phase_ready:
 	ld (bios_xmodem_retry_armed), a
 
 	;; Save and replace the 16-bit PRT0 vector atomically.
@@ -568,7 +570,7 @@ bios_xmodem_start_phase_ready:
 	ld (bios_timer0_saved_vector), a
 	ld a, (bios_timer0_vector+1)
 	ld (bios_timer0_saved_vector+1), a
-	ld hl, bios_xmodem_start
+	ld hl, __io_xmodem_start
 	ld a, l
 	ld (bios_timer0_vector), a
 	ld a, h
@@ -576,15 +578,15 @@ bios_xmodem_start_phase_ready:
 	ei
 	ld a, XMODEM_CRC_REQUEST
 	call io_putchar
-bios_xmodem_flag_wait:
+__io_xmodem_flag_wait:
 	di
 	ld a, (bios_xmodem_start_flag)
 	or a
-	jr nz, bios_xmodem_flag_ready
+	jr nz, __io_xmodem_flag_ready
 	ei
 	halt
-	jr bios_xmodem_flag_wait
-bios_xmodem_flag_ready:
+	jr __io_xmodem_flag_wait
+__io_xmodem_flag_ready:
 	ei
 	ret
 
@@ -597,43 +599,43 @@ io_xmodem_rx:
 	ld de, EXTERNAL_RAM_START_ADDRESS
 	or a
 	sbc hl, de
-	jp c, io_xmodem_rx_bad_start
+	jp c, __io_xmodem_rx_bad_start
 	ld hl, XMODEM_LAST_SAFE_FRAME_START
 	ld de, (bios_xmodem_wp)
 	or a
 	sbc hl, de
-	jp c, io_xmodem_rx_bad_start
+	jp c, __io_xmodem_rx_bad_start
 	ld a, 1
 	ld (bios_xmodem_expected), a
 	xor a
 	ld (bios_xmodem_have_block), a
 
-	call bios_xmodem_wait_for_start
-bios_xmodem_wait_first_byte:
+	call __io_xmodem_wait_for_start
+__io_xmodem_wait_first_byte:
 	call io_getchar
 	cp XMODEM_SOH
-	jr z, bios_xmodem_packet
+	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
-	jp z, bios_xmodem_complete
+	jp z, __io_xmodem_complete
 	cp XMODEM_CAN
-	jp z, bios_xmodem_cancelled
+	jp z, __io_xmodem_cancelled
 	ld a, XMODEM_NAK
 	call io_putchar
-	jr bios_xmodem_wait_first_byte
+	jr __io_xmodem_wait_first_byte
 
-bios_xmodem_wait_frame:
+__io_xmodem_wait_frame:
 	call io_getchar
 	cp XMODEM_SOH
-	jr z, bios_xmodem_packet
+	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
-	jp z, bios_xmodem_complete
+	jp z, __io_xmodem_complete
 	cp XMODEM_CAN
-	jp z, bios_xmodem_cancelled
+	jp z, __io_xmodem_cancelled
 	ld a, XMODEM_NAK
 	call io_putchar
-	jr bios_xmodem_wait_frame
+	jr __io_xmodem_wait_frame
 
-bios_xmodem_packet:
+__io_xmodem_packet:
 	ld de, (bios_xmodem_wp)
 	call io_getchar
 	ld (bios_xmodem_block), a
@@ -649,98 +651,98 @@ bios_xmodem_packet:
 	ld a, (bios_xmodem_complement)
 	xor b
 	inc a
-	jr nz, bios_xmodem_bad_header
+	jr nz, __io_xmodem_bad_header
 
 	ld a, (bios_xmodem_block)
 	ld b, a
 	ld a, (bios_xmodem_expected)
 	cp b
-	jr z, bios_xmodem_expected_block
+	jr z, __io_xmodem_expected_block
 	ld a, (bios_xmodem_have_block)
 	or a
-	jr z, bios_xmodem_bad_header
+	jr z, __io_xmodem_bad_header
 	ld a, (bios_xmodem_expected)
 	dec a
 	cp b
-	jr z, bios_xmodem_duplicate_block
-	jr bios_xmodem_bad_header
+	jr z, __io_xmodem_duplicate_block
+	jr __io_xmodem_bad_header
 
-bios_xmodem_expected_block:
+__io_xmodem_expected_block:
 	;; A 130-byte frame must fit in external SRAM, including both CRC bytes.
 	ld de, (bios_xmodem_wp)
 	ld hl, XMODEM_LAST_SAFE_FRAME_START
 	or a
 	sbc hl, de
-	jp c, bios_xmodem_abort
+	jp c, __io_xmodem_abort
 	ld a, 1
 	ld (bios_xmodem_store), a
-	jr bios_xmodem_read_data
-bios_xmodem_duplicate_block:
-	jr bios_xmodem_read_data
-bios_xmodem_bad_header:
+	jr __io_xmodem_read_data
+__io_xmodem_duplicate_block:
+	jr __io_xmodem_read_data
+__io_xmodem_bad_header:
 	xor a
 	ld (bios_xmodem_header_ok), a
 
-bios_xmodem_read_data:
+__io_xmodem_read_data:
 	xor a
 	ld (bios_xmodem_crc_hi), a
 	ld (bios_xmodem_crc_lo), a
 	ld a, XMODEM_BLOCK_SIZE
 	ld (bios_xmodem_data_count), a
-bios_xmodem_data_loop:
+__io_xmodem_data_loop:
 	call io_getchar
 	ld (bios_xmodem_byte), a
-	call bios_xmodem_crc_update
+	call __io_xmodem_crc_update
 	ld a, (bios_xmodem_store)
 	or a
-	jr z, bios_xmodem_skip_data_store
+	jr z, __io_xmodem_skip_data_store
 	ld a, (bios_xmodem_byte)
 	ld (de), a
 	inc de
-bios_xmodem_skip_data_store:
+__io_xmodem_skip_data_store:
 	ld a, (bios_xmodem_data_count)
 	dec a
 	ld (bios_xmodem_data_count), a
-	jr nz, bios_xmodem_data_loop
+	jr nz, __io_xmodem_data_loop
 
 	call io_getchar
 	ld (bios_xmodem_received_crc_hi), a
 	ld b, a
 	ld a, (bios_xmodem_store)
 	or a
-	jr z, bios_xmodem_skip_crc_hi_store
+	jr z, __io_xmodem_skip_crc_hi_store
 	ld a, b
 	ld (de), a
 	inc de
-bios_xmodem_skip_crc_hi_store:
+__io_xmodem_skip_crc_hi_store:
 	call io_getchar
 	ld (bios_xmodem_received_crc_lo), a
 	ld b, a
 	ld a, (bios_xmodem_store)
 	or a
-	jr z, bios_xmodem_skip_crc_lo_store
+	jr z, __io_xmodem_skip_crc_lo_store
 	ld a, b
 	ld (de), a
 	inc de
-bios_xmodem_skip_crc_lo_store:
+__io_xmodem_skip_crc_lo_store:
 
 	ld a, (bios_xmodem_header_ok)
 	or a
-	jp z, bios_xmodem_reject
+	jp z, __io_xmodem_reject
 	ld a, (bios_xmodem_crc_hi)
 	ld b, a
 	ld a, (bios_xmodem_received_crc_hi)
 	cp b
-	jp nz, bios_xmodem_reject
+	jp nz, __io_xmodem_reject
 	ld a, (bios_xmodem_crc_lo)
 	ld b, a
 	ld a, (bios_xmodem_received_crc_lo)
 	cp b
-	jp nz, bios_xmodem_reject
+	jp nz, __io_xmodem_reject
 
 	ld a, (bios_xmodem_store)
 	or a
-	jr z, bios_xmodem_ack
+	jr z, __io_xmodem_ack
 	dec de
 	dec de
 	ld (bios_xmodem_wp), de
@@ -749,68 +751,68 @@ bios_xmodem_skip_crc_lo_store:
 	ld (bios_xmodem_expected), a
 	ld a, 1
 	ld (bios_xmodem_have_block), a
-bios_xmodem_ack:
+__io_xmodem_ack:
 	ld a, XMODEM_ACK
 	call io_putchar
-	jp bios_xmodem_wait_frame
+	jp __io_xmodem_wait_frame
 
-bios_xmodem_reject:
+__io_xmodem_reject:
 	;; WP is unchanged, so a retransmission overwrites the rejected frame.
 	ld a, XMODEM_NAK
 	call io_putchar
-	jp bios_xmodem_wait_frame
+	jp __io_xmodem_wait_frame
 
-bios_xmodem_crc_update:
+__io_xmodem_crc_update:
 	;; A=data byte. CRC-16/XMODEM: init 0, poly 0x1021, MSB first.
 	ld b, a
 	ld a, (bios_xmodem_crc_hi)
 	xor b
 	ld (bios_xmodem_crc_hi), a
 	ld c, 8
-bios_xmodem_crc_bit:
+__io_xmodem_crc_bit:
 	ld a, (bios_xmodem_crc_lo)
 	add a, a
 	ld (bios_xmodem_crc_lo), a
 	ld a, (bios_xmodem_crc_hi)
 	rla
 	ld (bios_xmodem_crc_hi), a
-	jr nc, bios_xmodem_crc_next
+	jr nc, __io_xmodem_crc_next
 	ld a, (bios_xmodem_crc_lo)
 	xor XMODEM_CRC_POLY_LO
 	ld (bios_xmodem_crc_lo), a
 	ld a, (bios_xmodem_crc_hi)
 	xor XMODEM_CRC_POLY_HI
 	ld (bios_xmodem_crc_hi), a
-bios_xmodem_crc_next:
+__io_xmodem_crc_next:
 	dec c
-	jr nz, bios_xmodem_crc_bit
+	jr nz, __io_xmodem_crc_bit
 	ret
 
-bios_xmodem_complete:
+__io_xmodem_complete:
 	ld a, XMODEM_ACK
 	call io_putchar
 	xor a
-	jp io_xmodem_rx_done
-bios_xmodem_cancelled:
+	jp __io_xmodem_rx_done
+__io_xmodem_cancelled:
 	ld a, XMODEM_STATUS_CANCELLED
-	jp io_xmodem_rx_done
-bios_xmodem_abort:
+	jp __io_xmodem_rx_done
+__io_xmodem_abort:
 	ld a, XMODEM_CAN
 	call io_putchar
 	call io_putchar
 	ld a, XMODEM_STATUS_ERROR
-	jp io_xmodem_rx_done
+	jp __io_xmodem_rx_done
 
 ;; Always put the caller's timer vector back before returning from the API.
-io_xmodem_rx_done:
+__io_xmodem_rx_done:
 	push af
 	di
-	call bios_xmodem_restore_timer_vector
+	call __io_xmodem_restore_timer_vector
 	ei
 	pop af
 	pop hl
 	ret
-io_xmodem_rx_bad_start:
+__io_xmodem_rx_bad_start:
 	ld a, XMODEM_STATUS_ERROR
 	pop hl
 	ret
@@ -824,8 +826,8 @@ bios_xmodem_loading_message:
 	.asciz "XMODEM-CRC loading to 0x010000\r\n"
 bios_xmodem_complete_message:
 	.asciz "Load complete\r\n"
-bios_xmodem_starting_message:
-	.asciz "Starting\r\n"
+bios_xmodem_press_key_message:
+	.asciz "Press any key to start\r\n"
 bios_xmodem_failed_message:
 	.asciz "XMODEM-CRC receive failed\r\n"
 
@@ -837,18 +839,18 @@ bios_unused_00:          .dw 0
 bios_unused_02:          .dw 0
 bios_unused_04:          .dw 0
 bios_unused_06:          .dw 0
-bios_flash_vector:       .dw bios_unhandled_isr ; 0x08 Flash
-bios_timer0_vector:      .dw bios_timer0_isr    ; 0x0A PRT0
-bios_timer1_vector:      .dw bios_unhandled_isr ; 0x0C PRT1
-bios_timer2_vector:      .dw bios_unhandled_isr ; 0x0E PRT2
-bios_timer3_vector:      .dw bios_unhandled_isr ; 0x10 PRT3
-bios_timer4_vector:      .dw bios_unhandled_isr ; 0x12 PRT4
-bios_timer5_vector:      .dw bios_unhandled_isr ; 0x14 PRT5
-bios_rtc_vector:         .dw bios_unhandled_isr ; 0x16 RTC
-bios_uart0_vector:       .dw bios_unhandled_isr ; 0x18 UART0
-bios_uart1_vector:       .dw bios_uart1_isr    ; 0x1A UART1
-bios_i2c_vector:         .dw bios_unhandled_isr ; 0x1C I2C
-bios_spi_vector:         .dw bios_unhandled_isr ; 0x1E SPI
+bios_flash_vector:       .dw __bios_unhandled_isr ; 0x08 Flash
+bios_timer0_vector:      .dw __bios_timer0_isr    ; 0x0A PRT0
+bios_timer1_vector:      .dw __bios_unhandled_isr ; 0x0C PRT1
+bios_timer2_vector:      .dw __bios_unhandled_isr ; 0x0E PRT2
+bios_timer3_vector:      .dw __bios_unhandled_isr ; 0x10 PRT3
+bios_timer4_vector:      .dw __bios_unhandled_isr ; 0x12 PRT4
+bios_timer5_vector:      .dw __bios_unhandled_isr ; 0x14 PRT5
+bios_rtc_vector:         .dw __bios_unhandled_isr ; 0x16 RTC
+bios_uart0_vector:       .dw __bios_unhandled_isr ; 0x18 UART0
+bios_uart1_vector:       .dw __bios_uart1_isr    ; 0x1A UART1
+bios_i2c_vector:         .dw __bios_unhandled_isr ; 0x1C I2C
+bios_spi_vector:         .dw __bios_unhandled_isr ; 0x1E SPI
 bios_unused_20:          .dw 0                 ; 0x20 unused
 bios_unused_22:          .dw 0                 ; 0x22 unused
 bios_unused_24:          .dw 0                 ; 0x24 unused
@@ -857,30 +859,30 @@ bios_unused_28:          .dw 0                 ; 0x28 unused
 bios_unused_2a:          .dw 0                 ; 0x2A unused
 bios_unused_2c:          .dw 0                 ; 0x2C unused
 bios_unused_2e:          .dw 0                 ; 0x2E unused
-bios_portb0_vector:      .dw bios_unhandled_isr ; 0x30 Port B0
-bios_portb1_vector:      .dw bios_unhandled_isr ; 0x32 Port B1
-bios_portb2_vector:      .dw bios_unhandled_isr ; 0x34 Port B2
-bios_portb3_vector:      .dw bios_unhandled_isr ; 0x36 Port B3
-bios_portb4_vector:      .dw bios_unhandled_isr ; 0x38 Port B4
-bios_portb5_vector:      .dw bios_unhandled_isr ; 0x3A Port B5
-bios_portb6_vector:      .dw bios_unhandled_isr ; 0x3C Port B6
-bios_portb7_vector:      .dw bios_unhandled_isr ; 0x3E Port B7
-bios_portc0_vector:      .dw bios_unhandled_isr ; 0x40 Port C0
-bios_portc1_vector:      .dw bios_unhandled_isr ; 0x42 Port C1
-bios_portc2_vector:      .dw bios_unhandled_isr ; 0x44 Port C2
-bios_portc3_vector:      .dw bios_unhandled_isr ; 0x46 Port C3
-bios_portc4_vector:      .dw bios_unhandled_isr ; 0x48 Port C4
-bios_portc5_vector:      .dw bios_unhandled_isr ; 0x4A Port C5
-bios_portc6_vector:      .dw bios_unhandled_isr ; 0x4C Port C6
-bios_portc7_vector:      .dw bios_unhandled_isr ; 0x4E Port C7
-bios_portd0_vector:      .dw bios_unhandled_isr ; 0x50 Port D0
-bios_portd1_vector:      .dw bios_unhandled_isr ; 0x52 Port D1
-bios_portd2_vector:      .dw bios_unhandled_isr ; 0x54 Port D2
-bios_portd3_vector:      .dw bios_unhandled_isr ; 0x56 Port D3
-bios_portd4_vector:      .dw bios_unhandled_isr ; 0x58 Port D4
-bios_portd5_vector:      .dw bios_unhandled_isr ; 0x5A Port D5
-bios_portd6_vector:      .dw bios_unhandled_isr ; 0x5C Port D6
-bios_portd7_vector:      .dw bios_unhandled_isr ; 0x5E Port D7
+bios_portb0_vector:      .dw __bios_unhandled_isr ; 0x30 Port B0
+bios_portb1_vector:      .dw __bios_unhandled_isr ; 0x32 Port B1
+bios_portb2_vector:      .dw __bios_unhandled_isr ; 0x34 Port B2
+bios_portb3_vector:      .dw __bios_unhandled_isr ; 0x36 Port B3
+bios_portb4_vector:      .dw __bios_unhandled_isr ; 0x38 Port B4
+bios_portb5_vector:      .dw __bios_unhandled_isr ; 0x3A Port B5
+bios_portb6_vector:      .dw __bios_unhandled_isr ; 0x3C Port B6
+bios_portb7_vector:      .dw __bios_unhandled_isr ; 0x3E Port B7
+bios_portc0_vector:      .dw __bios_unhandled_isr ; 0x40 Port C0
+bios_portc1_vector:      .dw __bios_unhandled_isr ; 0x42 Port C1
+bios_portc2_vector:      .dw __bios_unhandled_isr ; 0x44 Port C2
+bios_portc3_vector:      .dw __bios_unhandled_isr ; 0x46 Port C3
+bios_portc4_vector:      .dw __bios_unhandled_isr ; 0x48 Port C4
+bios_portc5_vector:      .dw __bios_unhandled_isr ; 0x4A Port C5
+bios_portc6_vector:      .dw __bios_unhandled_isr ; 0x4C Port C6
+bios_portc7_vector:      .dw __bios_unhandled_isr ; 0x4E Port C7
+bios_portd0_vector:      .dw __bios_unhandled_isr ; 0x50 Port D0
+bios_portd1_vector:      .dw __bios_unhandled_isr ; 0x52 Port D1
+bios_portd2_vector:      .dw __bios_unhandled_isr ; 0x54 Port D2
+bios_portd3_vector:      .dw __bios_unhandled_isr ; 0x56 Port D3
+bios_portd4_vector:      .dw __bios_unhandled_isr ; 0x58 Port D4
+bios_portd5_vector:      .dw __bios_unhandled_isr ; 0x5A Port D5
+bios_portd6_vector:      .dw __bios_unhandled_isr ; 0x5C Port D6
+bios_portd7_vector:      .dw __bios_unhandled_isr ; 0x5E Port D7
 bios_unused_60:          .dw 0                 ; 0x60 unused
 bios_unused_62:          .dw 0                 ; 0x62 unused
 bios_unused_64:          .dw 0                 ; 0x64 unused
