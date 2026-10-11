@@ -30,10 +30,14 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 ./build.sh
 ```
 
-This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), `bin/ramtest.bin`, and
-`bin/helloserial.bin`. It copies the binaries to `sdcard/` and writes an
-`autoexec.txt` that loads and runs the RAM test. The generated card contents
-are ignored by Git. Rebuilding overwrites these files in `sdcard/`.
+This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), the 8-byte
+`bin/bios_reset_stub.bin` for address `0x000000`, `bin/ramtest.bin`, and
+`bin/helloserial.bin`. The reset stub starts with `JP.LIL bios_halt`; it is
+emitted separately because the current handoff loads the BIOS at `0x00E000`.
+The build copies the binaries to `sdcard/` and writes an `autoexec.txt` that
+loads and runs the RAM test. The current handoff does not install the reset
+stub at address zero. Generated card contents are ignored by Git; rebuilding
+overwrites them.
 
 ## Run and test
 

@@ -12,7 +12,14 @@ mkdir -p bin obj
 "$agondev_bin/ez80-none-elf-ld" -T "$root/EZ80BIOS.ld" \
   --oformat binary -Map bin/EZ80BIOS.map \
   -o obj/EZ80BIOS.full.bin obj/EZ80BIOS.o
-# The absolute assembly image occupies 0xE000..0xFFFF in the full address image.
+# Keep the low reset vector separate from the 8 KiB internal-SRAM BIOS image.
+dd if=obj/EZ80BIOS.full.bin of=bin/bios_reset_stub.bin \
+  bs=1 skip=0 count=8 status=none
+[[ $(wc -c < bin/bios_reset_stub.bin) -eq 8 ]] || {
+  echo "bios_reset_stub.bin must contain exactly 8 bytes" >&2
+  exit 1
+}
+# The BIOS image occupies 0xE000..0xFFFF in the full address image.
 dd if=obj/EZ80BIOS.full.bin of=bin/EZ80BIOS.bin \
   bs=1 skip=$((0xE000)) count=$((0x2000)) status=none
 [[ $(wc -c < bin/EZ80BIOS.bin) -eq 8192 ]] || {
@@ -37,8 +44,9 @@ make
 sdcard="$root/sdcard"
 mkdir -p "$sdcard"
 cp bin/EZ80BIOS.bin "$sdcard/EZ80BIOS.bin"
+cp bin/bios_reset_stub.bin "$sdcard/bios_reset_stub.bin"
 cp bin/ramtest.bin "$sdcard/ramtest.bin"
 cp bin/helloserial.bin "$sdcard/helloserial.bin"
 printf 'LOAD RAMTEST.BIN\nRUN\n' > "$sdcard/autoexec.txt"
 
-echo "Copied BIOS, ramtest, and helloserial; wrote autoexec.txt to $sdcard"
+echo "Copied BIOS, reset stub, ramtest, and helloserial; wrote autoexec.txt to $sdcard"

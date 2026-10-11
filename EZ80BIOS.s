@@ -9,6 +9,10 @@
 	.include "EZ80BIOS_public.inc"
 
 	.section .bios,"ax",@progbits
+	.org 0x000000
+bios_reset_stub:
+	jp.lil bios_halt
+
 	.org 0xE000
 
 ;; Execution begins directly at the BIOS entry point.
