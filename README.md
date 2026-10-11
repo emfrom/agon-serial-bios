@@ -90,6 +90,11 @@ The F92 product specification (PS015317-0120, printed pages 190–192) says the
 selects on overlap. Thus `RAM_ADDR_U = 0` maps SRAM to `0x00E000–0x00FFFF`, not
 to address `0x000000`.
 
+At BIOS entry, `CS0_LBR`/`CS0_UBR` map the 512 KiB external RAM window to pages
+`0x01`–`0x08` (`0x010000`–`0x08FFFF`), immediately following the BIOS page.
+This remap happens after execution has moved into the higher-priority on-chip
+SRAM, so the BIOS remains executable while CS0 is reconfigured.
+
 ## VSync interrupt at handoff
 
 `src/main.c:bios_handoff()` disables CPU interrupts, clears the pending Port B

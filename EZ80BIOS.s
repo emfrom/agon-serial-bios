@@ -19,6 +19,16 @@
 bios_entry:
 	di
 	ld sp, bios_stack_top
+
+	;; Map the 512 KiB external RAM to pages 0x01..0x08, immediately after
+	;; the BIOS page. The BIOS runs from higher-priority on-chip SRAM in page 0.
+	xor a
+	out0 (CS0_UBR), a
+	ld a, EXTERNAL_RAM_FIRST_PAGE
+	out0 (CS0_LBR), a
+	ld a, EXTERNAL_RAM_LAST_PAGE
+	out0 (CS0_UBR), a
+
 	ld a, BIOS_IVT_PAGE
 	ld i, a
 
@@ -426,6 +436,11 @@ bios_stack:
 	.set PC_DDR, 0x9F
 	.set PC_ALT1, 0xA0
 	.set PC_ALT2, 0xA1
+	.set CS0_LBR, 0xA8
+	.set CS0_UBR, 0xA9
+
+	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
+	.set EXTERNAL_RAM_LAST_PAGE, 0x08
 
 	.set UART1_LSR_DR, 0x01
 	.set UART1_IER_RIE, 0x01
