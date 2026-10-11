@@ -128,6 +128,8 @@ Assembly entry points:
   ring is full and retries after an interrupt.
 - `io_getchar`: blocking character input; returns the byte in `A`. It sleeps
   while the RX ring is empty and wakes when the UART1 ISR queues data.
+- `io_peek`: nonblocking RX-ring peek; returns the next byte in `A` with carry
+  clear, or carry set if empty. It does not consume the byte.
 - `io_nread`: blocking binary input; 24-bit `HL` points to the destination and
   24-bit `BC` is the exact byte count. It returns only after reading that many
   bytes, and restores the caller's `HL`, `BC`, `IX`, and `IY` values.
@@ -141,9 +143,11 @@ Assembly entry points:
 At startup the BIOS prints `XMODEM-CRC loading to 0x010000`, sends `C` to
 request CRC mode, and receives Minicom's 128-byte XMODEM frames through the UART1
 RX ring. PRT0 ticks every 10 ms, increments the 24-bit `bios_uptime_10ms` value,
-and drains any residual hardware RX FIFO bytes into that ring. While waiting for
-the first frame, the BIOS resends `C` every 256 ticks (2,560 ms), using the low
-uptime byte crossing the 200 threshold and wrapping below it.
+and drains any residual hardware RX FIFO bytes into that ring. During startup,
+`bios_xmodem_start` temporarily replaces the PRT0 vector. Its handler peeks at
+the RX ring for SOH (or cancellation/end), resends `C` every 256 ticks
+(2,560 ms), restores the saved timer vector on start, then tail-jumps to the
+normal timer ISR. The SOH remains queued for the blocking receiver.
 
 Each frame's payload and two CRC bytes are written to external SRAM, checked
 with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
@@ -178,6 +182,11 @@ bios_entry
 bios_uart1_isr (UART1 vector 0x1A)
 ├─ RX causes ──> drain UART FIFO into rs, update RTS
 └─ TX-empty ──> fill UART FIFO from ts
+
+bios_xmodem_start (temporary PRT0 vector)
+├─ io_peek for SOH/CAN/EOT without consuming the byte
+├─ resend 'C' on the 256-tick schedule
+└─ restore saved vector, then jump to bios_timer0_isr
 
 bios_timer0_isr (PRT0 vector 0x0A; 10 ms)
 ├─ increment bios_uptime_10ms

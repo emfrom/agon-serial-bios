@@ -6,9 +6,9 @@
 
 	.assume ADL = 1
 
-	.global bios_entry, bios_xmodem_receive, bios_xmodem_wp, bios_uptime_10ms
+	.global bios_entry, bios_xmodem_receive, bios_xmodem_start, bios_xmodem_wp, bios_uptime_10ms
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
-	.global io_putchar, io_getchar, io_nread, io_puts
+	.global io_putchar, io_getchar, io_peek, io_nread, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
 	.global bios_rs_overflow, bios_rs_ring, bios_ts_ring
 
@@ -239,6 +239,61 @@ bios_timer0_isr:
 	ei
 	reti.l
 
+;; Temporary PRT0 handler during XMODEM startup. It never returns directly
+;; from the interrupt: after peeking/handshake work it restores registers and
+;; tail-jumps to the regular timer ISR, which performs RETI.L.
+bios_xmodem_start:
+	push af
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+	call io_peek
+	jr c, bios_xmodem_start_retry
+	cp XMODEM_SOH
+	jr z, bios_xmodem_start_detected
+	cp XMODEM_EOT
+	jr z, bios_xmodem_start_detected
+	cp XMODEM_CAN
+	jr z, bios_xmodem_start_detected
+
+bios_xmodem_start_retry:
+	ld a, (bios_xmodem_retry_armed)
+	or a
+	jr z, bios_xmodem_start_arm_retry
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_SEND_THRESHOLD
+	jr nc, bios_xmodem_start_resume
+	xor a
+	ld (bios_xmodem_retry_armed), a
+	ld a, XMODEM_CRC_REQUEST
+	call bios_uart1_tx_put       ;; Nonblocking: never wait inside an ISR.
+	jr bios_xmodem_start_resume
+bios_xmodem_start_arm_retry:
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_ARM_THRESHOLD
+	jr c, bios_xmodem_start_resume
+	ld a, 1
+	ld (bios_xmodem_retry_armed), a
+	jr bios_xmodem_start_resume
+
+bios_xmodem_start_detected:
+	ld a, (bios_timer0_saved_vector)
+	ld (bios_timer0_vector), a
+	ld a, (bios_timer0_saved_vector+1)
+	ld (bios_timer0_vector+1), a
+	ld a, 1
+	ld (bios_xmodem_started), a
+bios_xmodem_start_resume:
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	pop af
+	jp bios_timer0_isr
+
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
 ;; slots. Leave TIE enabled only when software data remains queued.
 bios_uart1_tx_service:
@@ -402,6 +457,25 @@ io_getchar_received:
 	ei
 	ret
 
+;; Nonblocking receive peek: A=next byte, carry clear; carry set if empty.
+;; The byte remains in rs so a later io_getchar/io_nread receives it.
+io_peek:
+	ld a, (bios_rs_tail)
+	ld b, a
+	ld a, (bios_rs_head)
+	cp b
+	jr z, io_peek_empty
+	ld hl, bios_ringbuffer_in
+	ld de, BIOS_ZERO
+	ld e, b
+	add hl, de
+	ld a, (hl)
+	or a
+	ret
+io_peek_empty:
+	scf
+	ret
+
 ;; Read exactly BC bytes from UART1 into the 24-bit address in HL.
 ;; Preserve the caller's HL/BC values and IX/IY used as working registers.
 io_nread:
@@ -465,6 +539,40 @@ bios_wait_inner:
 	pop af
 	ret
 
+;; Install the temporary PRT0 vector and request XMODEM-CRC until a start
+;; control byte is visible in rs. The ISR peeks without consuming it.
+bios_xmodem_wait_start:
+	xor a
+	ld (bios_xmodem_started), a
+	ld a, (bios_uptime_10ms)
+	cp XMODEM_RETRY_ARM_THRESHOLD
+	ld a, 0
+	jr c, bios_xmodem_start_phase_ready
+	inc a
+bios_xmodem_start_phase_ready:
+	ld (bios_xmodem_retry_armed), a
+
+	;; Save and replace the 16-bit PRT0 vector atomically.
+	di
+	ld a, (bios_timer0_vector)
+	ld (bios_timer0_saved_vector), a
+	ld a, (bios_timer0_vector+1)
+	ld (bios_timer0_saved_vector+1), a
+	ld hl, bios_xmodem_start
+	ld a, l
+	ld (bios_timer0_vector), a
+	ld a, h
+	ld (bios_timer0_vector+1), a
+	ei
+	ld a, XMODEM_CRC_REQUEST
+	call io_putchar
+bios_xmodem_start_wait:
+	ld a, (bios_xmodem_started)
+	or a
+	ret nz
+	halt
+	jr bios_xmodem_start_wait
+
 ;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
 ;; A=0 on EOT, A=1 on cancellation or insufficient external RAM.
@@ -476,49 +584,18 @@ bios_xmodem_receive:
 	xor a
 	ld (bios_xmodem_have_block), a
 
-	ld a, (bios_uptime_10ms)
-	cp XMODEM_RETRY_ARM_THRESHOLD
-	ld a, 0
-	jr c, bios_xmodem_initial_phase_ready
-	inc a
-bios_xmodem_initial_phase_ready:
-	ld (bios_xmodem_retry_armed), a
-	ld a, XMODEM_CRC_REQUEST
-	call io_putchar
-bios_xmodem_wait_start:
-	;; Prefer a byte already in the software ring; HALT until UART or PRT0 IRQ.
-	call bios_uart1_rx_get
-	jr nc, bios_xmodem_start_byte
-	halt
-	call bios_uart1_rx_get
-	jr nc, bios_xmodem_start_byte
-	jr bios_xmodem_check_retry
-bios_xmodem_start_byte:
+	call bios_xmodem_wait_start
+bios_xmodem_wait_first_byte:
+	call io_getchar
 	cp XMODEM_SOH
 	jr z, bios_xmodem_packet
 	cp XMODEM_EOT
 	jp z, bios_xmodem_complete
 	cp XMODEM_CAN
 	jp z, bios_xmodem_cancelled
-bios_xmodem_check_retry:
-	ld a, (bios_xmodem_retry_armed)
-	or a
-	jr z, bios_xmodem_arm_retry
-	ld a, (bios_uptime_10ms)
-	cp XMODEM_RETRY_SEND_THRESHOLD
-	jr nc, bios_xmodem_wait_start
-	xor a
-	ld (bios_xmodem_retry_armed), a
-	ld a, XMODEM_CRC_REQUEST
+	ld a, XMODEM_NAK
 	call io_putchar
-	jr bios_xmodem_wait_start
-bios_xmodem_arm_retry:
-	ld a, (bios_uptime_10ms)
-	cp XMODEM_RETRY_ARM_THRESHOLD
-	jr c, bios_xmodem_wait_start
-	ld a, 1
-	ld (bios_xmodem_retry_armed), a
-	jr bios_xmodem_wait_start
+	jr bios_xmodem_wait_first_byte
 
 bios_xmodem_wait_frame:
 	call io_getchar
@@ -782,6 +859,8 @@ bios_rs_overflow: .db 0
 bios_uptime_10ms:           .ds 3, 0
 bios_xmodem_wp:             .ds 3, 0
 bios_xmodem_retry_armed:    .db 0
+bios_xmodem_started:        .db 0
+bios_timer0_saved_vector:   .ds 2, 0
 bios_xmodem_expected:       .db 0
 bios_xmodem_have_block:     .db 0
 bios_xmodem_block:          .db 0
