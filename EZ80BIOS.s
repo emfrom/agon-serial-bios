@@ -165,7 +165,7 @@ bios_uart1_irq_next:
 	cp UART1_IIR_RX_TIMEOUT
 	jr z, bios_uart1_rx_service
 	cp UART1_IIR_TX_EMPTY         ;; Transmit FIFO empty
-	jr z, bios_uart1_tx_service
+	jp z, bios_uart1_tx_service
 
 	;; Modem-status interrupts are disabled; clear any unexpected cause.
 	in0 a, (UART1_MSR)
