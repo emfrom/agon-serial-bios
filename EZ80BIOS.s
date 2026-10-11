@@ -352,7 +352,8 @@ bios_loaded_message:
 bios_memory_mapped_message:
 	.asciz "Memory mapped at 0x010000\r\n"
 bios_xmodem_loading_message:
-	.asciz "XMODEM-CRC loading to 0x010000\r\n"
+	;; Keep uppercase 'C' out of pre-handshake output: senders treat it as CRC request.
+	.asciz "Waiting for XMODEM at 0x010000\r\n"
 bios_xmodem_complete_message:
 	.asciz "Load complete\r\n"
 bios_xmodem_press_key_message:

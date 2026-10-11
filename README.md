@@ -157,11 +157,13 @@ Assembly entry points:
 
 ## XMODEM-CRC receive
 
-At startup the BIOS prints `XMODEM-CRC loading to 0x010000`, then calls
-`io_xmodem_rx` with `HL=0x010000`. The routine receives Minicom's 128-byte
-XMODEM frames through the UART1 RX ring. PRT0 ticks every 10 ms, increments the
-24-bit `bios_uptime_10ms` value, and drains residual hardware RX FIFO bytes into
-the ring. During the handshake, the routine saves the current PRT0 vector and
+At startup the BIOS prints `Waiting for XMODEM at 0x010000`, then calls
+`io_xmodem_rx` with `HL=0x010000`. The pre-handshake output intentionally avoids
+an uppercase `C`, which an XMODEM sender interprets as a CRC request. The
+routine receives 128-byte XMODEM frames through the UART1 RX ring. PRT0 ticks
+every 10 ms, increments the 24-bit `bios_uptime_10ms` value, and drains residual
+hardware RX FIFO bytes into the ring. During the handshake, the routine saves
+the current PRT0 vector and
 temporarily installs `__io_xmodem_start`. That handler discards unrelated RX
 bytes, leaves SOH/CAN/EOT queued, resends `C` every 256 ticks (2,560 ms), then
 restores the saved vector and tail-jumps to the normal timer ISR. An atomic flag
