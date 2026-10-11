@@ -249,6 +249,13 @@ __io_xmodem_flag_ready:
 	ei
 	ret
 
+;; Preserve the XMODEM destination pointer across io_getchar, which uses DE.
+__io_xmodem_getchar:
+	push de
+	call io_getchar
+	pop de
+	ret
+
 ;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
 ;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
@@ -271,7 +278,7 @@ io_xmodem_rx:
 
 	call __io_xmodem_wait_for_start
 __io_xmodem_wait_first_byte:
-	call io_getchar
+	call __io_xmodem_getchar
 	cp XMODEM_SOH
 	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
@@ -283,7 +290,7 @@ __io_xmodem_wait_first_byte:
 	jr __io_xmodem_wait_first_byte
 
 __io_xmodem_wait_frame:
-	call io_getchar
+	call __io_xmodem_getchar
 	cp XMODEM_SOH
 	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
@@ -296,9 +303,9 @@ __io_xmodem_wait_frame:
 
 __io_xmodem_packet:
 	ld de, (bios_xmodem_wp)
-	call io_getchar
+	call __io_xmodem_getchar
 	ld (bios_xmodem_block), a
-	call io_getchar
+	call __io_xmodem_getchar
 	ld (bios_xmodem_complement), a
 
 	ld a, 1
@@ -349,7 +356,7 @@ __io_xmodem_read_data:
 	ld a, XMODEM_BLOCK_SIZE
 	ld (bios_xmodem_data_count), a
 __io_xmodem_data_loop:
-	call io_getchar
+	call __io_xmodem_getchar
 	ld (bios_xmodem_byte), a
 	call __io_xmodem_crc_update
 	ld a, (bios_xmodem_store)
@@ -364,7 +371,7 @@ __io_xmodem_skip_data_store:
 	ld (bios_xmodem_data_count), a
 	jr nz, __io_xmodem_data_loop
 
-	call io_getchar
+	call __io_xmodem_getchar
 	ld (bios_xmodem_received_crc_hi), a
 	ld b, a
 	ld a, (bios_xmodem_store)
@@ -374,7 +381,7 @@ __io_xmodem_skip_data_store:
 	ld (de), a
 	inc de
 __io_xmodem_skip_crc_hi_store:
-	call io_getchar
+	call __io_xmodem_getchar
 	ld (bios_xmodem_received_crc_lo), a
 	ld b, a
 	ld a, (bios_xmodem_store)
