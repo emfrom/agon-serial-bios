@@ -5,7 +5,8 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 ## Project contents
 
 - `EZ80BIOS.s` implements the UART1 interrupt service routine, RX/TX ring
-  buffers, RTS flow control, and BIOS entry points.
+  buffers, RTS flow control, BIOS entry points, and a Minicom-compatible
+  XMODEM-CRC receiver.
 - `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
   and transfers execution to it.
 - `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
@@ -125,9 +126,28 @@ Assembly entry points:
   the RX ring is empty. It updates RTS as space is freed.
 - `io_putchar`: blocking character output; byte in `A`. It halts while the TX
   ring is full and retries after an interrupt.
-- `io_getchar`: blocking character input; returns the byte in `A`.
+- `io_getchar`: blocking character input; returns the byte in `A`. It sleeps
+  while the RX ring is empty and wakes when the UART1 ISR queues data.
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
-  `bios_entry` uses it to print `BIOS Loaded\r\n` before entering the HALT loop.
+- `bios_xmodem_receive`: receives a file into external RAM and returns status
+  in `A` (`0` success, nonzero cancel/error). `bios_xmodem_wp` is the exclusive
+  end address after the payload bytes.
+
+## XMODEM-CRC receive
+
+At startup the BIOS prints `XMODEM-CRC loading to 0x010000`, sends `C` to
+request CRC mode, and receives Minicom's 128-byte XMODEM frames through the UART1
+RX ring. It writes each payload and its two CRC bytes to external SRAM, checks
+CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
+no final XOR; high CRC byte first), and moves the write pointer back over the
+CRC. Bad frames receive NAK; valid frames receive ACK, including retransmitted
+duplicates. EOT is ACKed; the BIOS prints `Load complete` and `Starting`, then
+jumps to `0x010000`.
+
+The receiver uses blocking, interrupt-backed reads with no timeout. XMODEM
+transmits complete 128-byte blocks and does not include the exact file length, so
+any final-block padding is also present in memory. Two bytes are reserved for
+the final CRC, limiting a transfer to 4095 blocks (524,160 payload bytes).
 
 UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
 it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
@@ -138,29 +158,17 @@ so it works with UART adapters that do not provide modem-status signals.
 
 ```text
 bios_entry
-├─ io_puts ("BIOS Loaded\r\n")
-│  └─ io_putchar
-│     └─ bios_uart1_tx_put (retries until queued)
-└─ bios_idle (HALT; wakes on UART1 interrupt, vector 0x1A)
-   └─ bios_uart1_isr
-      ├─ bios_uart1_irq_next (read IIR and dispatch until no cause remains)
-      │  ├─ line status (0x06) ─┐
-      │  ├─ RX ready (0x04) ────┼─> bios_uart1_rx_service
-      │  └─ RX timeout (0x0C) ─┘   └─ bios_uart1_rx_loop
-      │                               ├─ space available: store byte in rs
-      │                               ├─ ring full: drop byte, increment overflow
-      │                               └─ after each byte/drain: bios_uart1_update_rts
-      ├─ TX FIFO empty (0x02) ─────> bios_uart1_tx_service
-      │                               └─ bios_uart1_tx_loop (up to 16 writes)
-      │                                  └─ queue empty: bios_uart1_tx_disable
-      └─ unexpected modem status ─> read MSR to clear cause
-      └─ no pending cause ─────────> restore registers, RETI.L
+├─ print startup messages
+├─ bios_xmodem_receive
+│  ├─ send 'C' to request XMODEM-CRC
+│  ├─ io_getchar (HALT while rs is empty)
+│  ├─ receive 128-byte payload and two CRC bytes
+│  ├─ CRC-16/XMODEM check ──> ACK or NAK
+│  └─ EOT ──> print completion, jump to 0x010000
+└─ transfer error ──> print failure, then bios_idle
 
-io_getchar
-└─ bios_uart1_rx_get (retry while empty)
-   └─ read rs byte, advance tail, call bios_uart1_update_rts
-
-bios_uart1_tx_put (low-level producer)
-└─ enqueue byte, enable TIE; carry reports a full ts ring
+bios_uart1_isr (UART1 vector 0x1A)
+├─ RX causes ──> drain UART FIFO into rs, update RTS
+└─ TX-empty ──> fill UART FIFO from ts
 ```
 

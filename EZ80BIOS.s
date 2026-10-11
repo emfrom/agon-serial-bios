@@ -6,7 +6,7 @@
 
 	.assume ADL = 1
 
-	.global bios_entry
+	.global bios_entry, bios_xmodem_receive, bios_xmodem_wp
 	.global bios_uart1_tx_put, bios_uart1_rx_get, bios_wait
 	.global io_putchar, io_getchar, io_puts
 	.global bios_rs_head, bios_rs_tail, bios_ts_head, bios_ts_tail
@@ -105,6 +105,19 @@ bios_copy_memory_message:
 	ld hl, EXTERNAL_RAM_START_ADDRESS
 	call io_puts
 	ld hl, bios_loaded_message
+	call io_puts
+	ld hl, bios_xmodem_loading_message
+	call io_puts
+	call bios_xmodem_receive
+	or a
+	jr nz, bios_xmodem_failed
+	ld hl, bios_xmodem_complete_message
+	call io_puts
+	ld hl, bios_xmodem_starting_message
+	call io_puts
+	jp EXTERNAL_RAM_START_ADDRESS
+bios_xmodem_failed:
+	ld hl, bios_xmodem_failed_message
 	call io_puts
 
 bios_idle:
@@ -335,10 +348,19 @@ io_putchar_queued:
 	pop af
 	ret
 
-;; Blocking UART1 character input. Returns the byte in A.
+;; Blocking UART1 character input. Sleep between RX-buffer checks; the UART1
+;; interrupt wakes HALT and has already queued the received byte in rs.
 io_getchar:
+	di
+io_getchar_retry:
 	call bios_uart1_rx_get
-	jr c, io_getchar
+	jr nc, io_getchar_received
+	ei
+	halt
+	di
+	jr io_getchar_retry
+io_getchar_received:
+	ei
 	ret
 
 ;; Blocking NUL-terminated string output. HL points to the first character.
@@ -374,11 +396,222 @@ bios_wait_inner:
 	pop af
 	ret
 
+;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
+;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
+;; A=0 on EOT, A=1 on cancellation or insufficient external RAM.
+bios_xmodem_receive:
+	ld hl, EXTERNAL_RAM_START_ADDRESS
+	ld (bios_xmodem_wp), hl
+	ld a, 1
+	ld (bios_xmodem_expected), a
+	xor a
+	ld (bios_xmodem_have_block), a
+
+	ld a, XMODEM_CRC_REQUEST
+	call io_putchar
+bios_xmodem_wait_start:
+	call io_getchar
+	cp XMODEM_SOH
+	jr z, bios_xmodem_packet
+	cp XMODEM_EOT
+	jp z, bios_xmodem_complete
+	cp XMODEM_CAN
+	jp z, bios_xmodem_cancelled
+	jr bios_xmodem_wait_start
+
+bios_xmodem_wait_frame:
+	call io_getchar
+	cp XMODEM_SOH
+	jr z, bios_xmodem_packet
+	cp XMODEM_EOT
+	jp z, bios_xmodem_complete
+	cp XMODEM_CAN
+	jp z, bios_xmodem_cancelled
+	ld a, XMODEM_NAK
+	call io_putchar
+	jr bios_xmodem_wait_frame
+
+bios_xmodem_packet:
+	ld de, (bios_xmodem_wp)
+	call io_getchar
+	ld (bios_xmodem_block), a
+	call io_getchar
+	ld (bios_xmodem_complement), a
+
+	ld a, 1
+	ld (bios_xmodem_header_ok), a
+	xor a
+	ld (bios_xmodem_store), a
+	ld a, (bios_xmodem_block)
+	ld b, a
+	ld a, (bios_xmodem_complement)
+	xor b
+	inc a
+	jr nz, bios_xmodem_bad_header
+
+	ld a, (bios_xmodem_block)
+	ld b, a
+	ld a, (bios_xmodem_expected)
+	cp b
+	jr z, bios_xmodem_expected_block
+	ld a, (bios_xmodem_have_block)
+	or a
+	jr z, bios_xmodem_bad_header
+	ld a, (bios_xmodem_expected)
+	dec a
+	cp b
+	jr z, bios_xmodem_duplicate_block
+	jr bios_xmodem_bad_header
+
+bios_xmodem_expected_block:
+	;; A 130-byte frame must fit; this boundary leaves no room for its CRC.
+	ld de, (bios_xmodem_wp)
+	ld hl, XMODEM_FRAME_START_NO_CRC_SPACE
+	or a
+	sbc hl, de
+	jp z, bios_xmodem_abort
+	ld a, 1
+	ld (bios_xmodem_store), a
+	jr bios_xmodem_read_data
+bios_xmodem_duplicate_block:
+	jr bios_xmodem_read_data
+bios_xmodem_bad_header:
+	xor a
+	ld (bios_xmodem_header_ok), a
+
+bios_xmodem_read_data:
+	xor a
+	ld (bios_xmodem_crc_hi), a
+	ld (bios_xmodem_crc_lo), a
+	ld a, XMODEM_BLOCK_SIZE
+	ld (bios_xmodem_data_count), a
+bios_xmodem_data_loop:
+	call io_getchar
+	ld (bios_xmodem_byte), a
+	call bios_xmodem_crc_update
+	ld a, (bios_xmodem_store)
+	or a
+	jr z, bios_xmodem_skip_data_store
+	ld a, (bios_xmodem_byte)
+	ld (de), a
+	inc de
+bios_xmodem_skip_data_store:
+	ld a, (bios_xmodem_data_count)
+	dec a
+	ld (bios_xmodem_data_count), a
+	jr nz, bios_xmodem_data_loop
+
+	call io_getchar
+	ld (bios_xmodem_received_crc_hi), a
+	ld b, a
+	ld a, (bios_xmodem_store)
+	or a
+	jr z, bios_xmodem_skip_crc_hi_store
+	ld a, b
+	ld (de), a
+	inc de
+bios_xmodem_skip_crc_hi_store:
+	call io_getchar
+	ld (bios_xmodem_received_crc_lo), a
+	ld b, a
+	ld a, (bios_xmodem_store)
+	or a
+	jr z, bios_xmodem_skip_crc_lo_store
+	ld a, b
+	ld (de), a
+	inc de
+bios_xmodem_skip_crc_lo_store:
+
+	ld a, (bios_xmodem_header_ok)
+	or a
+	jp z, bios_xmodem_reject
+	ld a, (bios_xmodem_crc_hi)
+	ld b, a
+	ld a, (bios_xmodem_received_crc_hi)
+	cp b
+	jp nz, bios_xmodem_reject
+	ld a, (bios_xmodem_crc_lo)
+	ld b, a
+	ld a, (bios_xmodem_received_crc_lo)
+	cp b
+	jp nz, bios_xmodem_reject
+
+	ld a, (bios_xmodem_store)
+	or a
+	jr z, bios_xmodem_ack
+	dec de
+	dec de
+	ld (bios_xmodem_wp), de
+	ld a, (bios_xmodem_expected)
+	inc a
+	ld (bios_xmodem_expected), a
+	ld a, 1
+	ld (bios_xmodem_have_block), a
+bios_xmodem_ack:
+	ld a, XMODEM_ACK
+	call io_putchar
+	jp bios_xmodem_wait_frame
+
+bios_xmodem_reject:
+	;; WP is unchanged, so a retransmission overwrites the rejected frame.
+	ld a, XMODEM_NAK
+	call io_putchar
+	jp bios_xmodem_wait_frame
+
+bios_xmodem_crc_update:
+	;; A=data byte. CRC-16/XMODEM: init 0, poly 0x1021, MSB first.
+	ld b, a
+	ld a, (bios_xmodem_crc_hi)
+	xor b
+	ld (bios_xmodem_crc_hi), a
+	ld c, 8
+bios_xmodem_crc_bit:
+	ld a, (bios_xmodem_crc_lo)
+	add a, a
+	ld (bios_xmodem_crc_lo), a
+	ld a, (bios_xmodem_crc_hi)
+	rla
+	ld (bios_xmodem_crc_hi), a
+	jr nc, bios_xmodem_crc_next
+	ld a, (bios_xmodem_crc_lo)
+	xor XMODEM_CRC_POLY_LO
+	ld (bios_xmodem_crc_lo), a
+	ld a, (bios_xmodem_crc_hi)
+	xor XMODEM_CRC_POLY_HI
+	ld (bios_xmodem_crc_hi), a
+bios_xmodem_crc_next:
+	dec c
+	jr nz, bios_xmodem_crc_bit
+	ret
+
+bios_xmodem_complete:
+	ld a, XMODEM_ACK
+	call io_putchar
+	xor a
+	ret
+bios_xmodem_cancelled:
+	ld a, XMODEM_STATUS_CANCELLED
+	ret
+bios_xmodem_abort:
+	ld a, XMODEM_CAN
+	call io_putchar
+	call io_putchar
+	ld a, XMODEM_STATUS_ERROR
+	ret
+
 bios_loaded_message:
 	.asciz "BIOS Loaded\r\n"
 
 bios_memory_mapped_message:
 	.asciz "Memory mapped at 0x010000\r\n"
+bios_xmodem_loading_message:
+	.asciz "XMODEM-CRC loading to 0x010000\r\n"
+bios_xmodem_complete_message:
+	.asciz "Load complete\r\n"
+bios_xmodem_starting_message:
+	.asciz "Starting\r\n"
+bios_xmodem_failed_message:
+	.asciz "XMODEM-CRC receive failed\r\n"
 
 ;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
 ;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,
@@ -444,6 +677,21 @@ bios_ts_head:     .db 0
 bios_ts_tail:     .db 0
 bios_rs_overflow: .db 0
 
+	.org 0xFC10
+bios_xmodem_wp:             .ds 3, 0
+bios_xmodem_expected:       .db 0
+bios_xmodem_have_block:     .db 0
+bios_xmodem_block:          .db 0
+bios_xmodem_complement:     .db 0
+bios_xmodem_header_ok:      .db 0
+bios_xmodem_store:          .db 0
+bios_xmodem_data_count:     .db 0
+bios_xmodem_byte:           .db 0
+bios_xmodem_crc_hi:         .db 0
+bios_xmodem_crc_lo:         .db 0
+bios_xmodem_received_crc_hi: .db 0
+bios_xmodem_received_crc_lo: .db 0
+
 	.org 0xFD00
 bios_rs_ring:
 bios_ringbuffer_in:
@@ -481,6 +729,18 @@ bios_stack:
 	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
 	.set EXTERNAL_RAM_LAST_PAGE, 0x08
 	.set EXTERNAL_RAM_START_ADDRESS, 0x010000
+	.set XMODEM_FRAME_START_NO_CRC_SPACE, 0x08FF80
+	.set XMODEM_BLOCK_SIZE, 128
+	.set XMODEM_SOH, 0x01
+	.set XMODEM_EOT, 0x04
+	.set XMODEM_ACK, 0x06
+	.set XMODEM_NAK, 0x15
+	.set XMODEM_CAN, 0x18
+	.set XMODEM_CRC_REQUEST, 0x43
+	.set XMODEM_CRC_POLY_HI, 0x10
+	.set XMODEM_CRC_POLY_LO, 0x21
+	.set XMODEM_STATUS_CANCELLED, 1
+	.set XMODEM_STATUS_ERROR, 2
 	.set BIOS_WAIT_OUTER, 4
 	.set BIOS_WAIT_INNER, 0xE0
 
