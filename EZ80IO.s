@@ -133,12 +133,14 @@ io_putchar_queued:
 	pop af
 	ret
 
-;; Blocking UART1 character input. Sleep between RX-buffer checks; the UART1
-;; interrupt wakes HALT and has already queued the received byte in rs.
+;; Blocking UART1 character input; sleep between RX-buffer checks. The ISR
+;; queues the byte in rs and wakes HALT. Preserve DE for callers.
 io_getchar:
 	di
 io_getchar_retry:
+	push de
 	call bios_uart1_rx_get
+	pop de
 	jr nc, io_getchar_received
 	ei
 	halt
@@ -249,13 +251,6 @@ __io_xmodem_flag_ready:
 	ei
 	ret
 
-;; Preserve the XMODEM destination pointer across io_getchar, which uses DE.
-__io_xmodem_getchar:
-	push de
-	call io_getchar
-	pop de
-	ret
-
 ;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
 ;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
@@ -278,7 +273,7 @@ io_xmodem_rx:
 
 	call __io_xmodem_wait_for_start
 __io_xmodem_wait_first_byte:
-	call __io_xmodem_getchar
+	call io_getchar
 	cp XMODEM_SOH
 	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
@@ -290,7 +285,7 @@ __io_xmodem_wait_first_byte:
 	jr __io_xmodem_wait_first_byte
 
 __io_xmodem_wait_frame:
-	call __io_xmodem_getchar
+	call io_getchar
 	cp XMODEM_SOH
 	jr z, __io_xmodem_packet
 	cp XMODEM_EOT
@@ -303,9 +298,9 @@ __io_xmodem_wait_frame:
 
 __io_xmodem_packet:
 	ld de, (bios_xmodem_wp)
-	call __io_xmodem_getchar
+	call io_getchar
 	ld (bios_xmodem_block), a
-	call __io_xmodem_getchar
+	call io_getchar
 	ld (bios_xmodem_complement), a
 
 	ld a, 1
@@ -356,7 +351,7 @@ __io_xmodem_read_data:
 	ld a, XMODEM_BLOCK_SIZE
 	ld (bios_xmodem_data_count), a
 __io_xmodem_data_loop:
-	call __io_xmodem_getchar
+	call io_getchar
 	ld (bios_xmodem_byte), a
 	call __io_xmodem_crc_update
 	ld a, (bios_xmodem_store)
@@ -371,7 +366,7 @@ __io_xmodem_skip_data_store:
 	ld (bios_xmodem_data_count), a
 	jr nz, __io_xmodem_data_loop
 
-	call __io_xmodem_getchar
+	call io_getchar
 	ld (bios_xmodem_received_crc_hi), a
 	ld b, a
 	ld a, (bios_xmodem_store)
@@ -381,7 +376,7 @@ __io_xmodem_skip_data_store:
 	ld (de), a
 	inc de
 __io_xmodem_skip_crc_hi_store:
-	call __io_xmodem_getchar
+	call io_getchar
 	ld (bios_xmodem_received_crc_lo), a
 	ld b, a
 	ld a, (bios_xmodem_store)

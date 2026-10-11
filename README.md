@@ -141,8 +141,9 @@ Assembly entry points:
   the RX ring is empty. It updates RTS as space is freed.
 - `io_putchar`: blocking character output; byte in `A`. It halts while the TX
   ring is full and retries after an interrupt.
-- `io_getchar`: blocking character input; returns the byte in `A`. It sleeps
-  while the RX ring is empty and wakes when the UART1 ISR queues data.
+- `io_getchar`: blocking character input; returns the byte in `A` and preserves
+  `DE`. It sleeps while the RX ring is empty and wakes when the UART1 ISR queues
+  data.
 - `io_peek`: nonblocking RX-ring peek; returns the next byte in `A` with carry
   clear, or carry set if empty. It does not consume the byte.
 - `io_nread`: blocking binary input; 24-bit `HL` points to the destination and
