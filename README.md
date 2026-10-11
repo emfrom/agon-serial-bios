@@ -54,8 +54,9 @@ and dispatches interrupt causes on UART0 and UART1. The patch also advances
 peripherals while the CPU is halted and wakes the CPU when an interrupt is
 accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
 
-The UART1 end-to-end BIOS smoke test reached `BIOS Loaded\n` over the serial
-link.
+The UART1 end-to-end BIOS smoke test reached the BIOS startup output over the
+serial link. BIOS output uses CRLF so terminal emulators such as Minicom return
+to the left margin on each new line.
 
 ## eZ80 interrupt and memory references
 
@@ -94,7 +95,7 @@ At BIOS entry, `CS0_LBR`/`CS0_UBR` map the 512 KiB external RAM window to pages
 `0x01`–`0x08` (`0x010000`–`0x08FFFF`), immediately following the BIOS page.
 This remap happens after execution has moved into the higher-priority on-chip
 SRAM, so the BIOS remains executable while CS0 is reconfigured. At startup, the
-BIOS copies the NUL-terminated `Memory mapped at 0x010000\n` string (including
+BIOS copies the NUL-terminated `Memory mapped at 0x010000\r\n` string (including
 its `\0`) into external SRAM at `0x010000`, then prints it from there through
 `io_puts`/UART1. This checks that the newly mapped RAM is both writable and
 readable.
@@ -126,7 +127,7 @@ Assembly entry points:
   ring is full and retries after an interrupt.
 - `io_getchar`: blocking character input; returns the byte in `A`.
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
-  `bios_entry` uses it to print `BIOS Loaded\n` before entering the HALT loop.
+  `bios_entry` uses it to print `BIOS Loaded\r\n` before entering the HALT loop.
 
 UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
 it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
@@ -137,7 +138,7 @@ so it works with UART adapters that do not provide modem-status signals.
 
 ```text
 bios_entry
-├─ io_puts ("BIOS Loaded\n")
+├─ io_puts ("BIOS Loaded\r\n")
 │  └─ io_putchar
 │     └─ bios_uart1_tx_put (retries until queued)
 └─ bios_idle (HALT; wakes on UART1 interrupt, vector 0x1A)

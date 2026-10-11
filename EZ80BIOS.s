@@ -375,10 +375,10 @@ bios_wait_inner:
 	ret
 
 bios_loaded_message:
-	.asciz "BIOS Loaded\n"
+	.asciz "BIOS Loaded\r\n"
 
 bios_memory_mapped_message:
-	.asciz "Memory mapped at 0x010000\n"
+	.asciz "Memory mapped at 0x010000\r\n"
 
 ;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
 ;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,
