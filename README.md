@@ -17,8 +17,8 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
   handoff.
 - `build.sh` assembles and links the BIOS, builds the RAM test, and installs
   the generated files into the repository-local `sdcard/` directory.
-- `run.sh` starts the emulator and a Minicom UART terminal connected through a
-  temporary virtual serial pair.
+- `run.sh` starts the emulator and Minicom through a temporary virtual serial
+  pair; `--xmodem FILE` sends a file with `sx` before opening Minicom.
 
 ## Build
 
@@ -37,14 +37,21 @@ are ignored by Git. Rebuilding overwrites these files in `sdcard/`.
 
 ## Run and test
 
-The runtime script requires `fab-agon-emulator`, `socat`, `minicom`, and
-`xterm` on `PATH`:
+The runtime script requires `fab-agon-emulator`, `socat`, and `minicom`, plus
+one of `st`, `ghosty`/`ghostty`, `alacritty`, or `xterm` on `PATH`:
 
 ```sh
 ./run.sh
 ```
 
-Optional emulator arguments can be passed through, for example:
+To upload the hello test with XMODEM before Minicom opens:
+
+```sh
+./run.sh --xmodem bin/helloserial.bin
+```
+
+This requires `sx` from `lrzsz`. Optional emulator arguments can also be passed
+through, for example:
 
 ```sh
 ./run.sh --debugger
