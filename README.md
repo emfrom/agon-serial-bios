@@ -93,7 +93,11 @@ to address `0x000000`.
 At BIOS entry, `CS0_LBR`/`CS0_UBR` map the 512 KiB external RAM window to pages
 `0x01`–`0x08` (`0x010000`–`0x08FFFF`), immediately following the BIOS page.
 This remap happens after execution has moved into the higher-priority on-chip
-SRAM, so the BIOS remains executable while CS0 is reconfigured.
+SRAM, so the BIOS remains executable while CS0 is reconfigured. At startup, the
+BIOS copies the NUL-terminated `Memory mapped at 0x010000\n` string (including
+its `\0`) into external SRAM at `0x010000`, then prints it from there through
+`io_puts`/UART1. This checks that the newly mapped RAM is both writable and
+readable.
 
 ## VSync interrupt at handoff
 

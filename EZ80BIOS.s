@@ -84,12 +84,26 @@ bios_entry:
 	ld a, UART1_MCTL_RTS          ;; DTR stays off.
 	out0 (UART1_MCTL), a
 
+	;; Copy the NUL-terminated map message to the first external RAM address.
+	ld hl, bios_memory_mapped_message
+	ld de, EXTERNAL_RAM_START_ADDRESS
+bios_copy_memory_message:
+	ld a, (hl)
+	ld (de), a
+	inc hl
+	inc de
+	or a
+	jr nz, bios_copy_memory_message
+
 	;; Clear stale receive/line status before enabling IRQs.
 	in0 a, (UART1_LSR)
 	ld a, UART1_IER_INIT          ;; RX and line-status interrupts
 	out0 (UART1_IER), a
 	ei
 
+	;; Print from the newly mapped external RAM, not the BIOS image.
+	ld hl, EXTERNAL_RAM_START_ADDRESS
+	call io_puts
 	ld hl, bios_loaded_message
 	call io_puts
 
@@ -363,6 +377,9 @@ bios_wait_inner:
 bios_loaded_message:
 	.asciz "BIOS Loaded\n"
 
+bios_memory_mapped_message:
+	.asciz "Memory mapped at 0x010000\n"
+
 ;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
 ;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,
 ;; immediately before the ring metadata at 0xFC00.
@@ -463,6 +480,7 @@ bios_stack:
 
 	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
 	.set EXTERNAL_RAM_LAST_PAGE, 0x08
+	.set EXTERNAL_RAM_START_ADDRESS, 0x010000
 	.set BIOS_WAIT_OUTER, 4
 	.set BIOS_WAIT_INNER, 0xE0
 
