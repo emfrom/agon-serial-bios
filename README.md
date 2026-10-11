@@ -55,8 +55,7 @@ bytes. RX overflow drops the byte and increments the wrapping
 The assembly entry points are:
 
 - `bios_uart1_tx_put`: byte in `A`; carry is set if the TX ring is full. On
-  success it queues the byte and enables the TX-empty interrupt only when CTS
-  is asserted.
+  success it queues the byte and enables the TX-empty interrupt.
 - `bios_uart1_rx_get`: returns a byte in `A` with carry clear, or carry set if
   the RX ring is empty. It updates RTS as space is freed.
 - `io_putchar`: blocking character output; byte in `A`. It halts while the TX
@@ -65,11 +64,10 @@ The assembly entry points are:
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string.
   `bios_entry` uses it to print `BIOS Loaded` before entering the HALT loop.
 
-UART1 RTS is active-low. The BIOS routes PC0–PC3 to UART1, deasserts RTS when
-fewer than 33 RX-ring slots remain, and reasserts it when at least 33 are free.
-CTS gates TX FIFO filling: queued bytes wait while CTS is deasserted, and the
-modem-status ISR path resumes TX when CTS is asserted. Other modem inputs are
-ignored; MIIE can still report their changes, which are cleared when MSR is read.
+UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
+it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
+slots, enough room for a full 133-byte XMODEM/CRC packet. TX does not check CTS,
+so it works with UART adapters that do not provide modem-status signals.
 
 ### RX/TX function tree
 
@@ -88,12 +86,9 @@ bios_entry
       │                               ├─ ring full: drop byte, increment overflow
       │                               └─ after each byte/drain: bios_uart1_update_rts
       ├─ TX FIFO empty (0x02) ─────> bios_uart1_tx_service
-      │                               ├─ CTS low: bios_uart1_tie_disable
-      │                               └─ CTS high: bios_uart1_tx_loop (up to 16 writes)
+      │                               └─ bios_uart1_tx_loop (up to 16 writes)
       │                                  └─ queue empty: bios_uart1_tx_disable
-      ├─ modem status ─────────────> bios_uart1_cts_service
-      │                               ├─ CTS asserted + ts nonempty: enable TIE
-      │                               └─ otherwise: bios_uart1_tie_disable
+      └─ unexpected modem status ─> read MSR to clear cause
       └─ no pending cause ─────────> restore registers, RETI.L
 
 io_getchar
@@ -101,7 +96,7 @@ io_getchar
    └─ read rs byte, advance tail, call bios_uart1_update_rts
 
 bios_uart1_tx_put (low-level producer)
-└─ enqueue byte, reconcile TIE with CTS; carry reports a full ts ring
+└─ enqueue byte, enable TIE; carry reports a full ts ring
 ```
 
 **Emulator limitation:** the tested Fab Agon Emulator build does not dispatch

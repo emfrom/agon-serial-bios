@@ -32,19 +32,19 @@ bios_entry:
 	xor a
 	out0 (UART1_IER), a
 
-	;; Route PC0/PC1 (UART1 TX/RX), PC2 (RTS), and PC3 (CTS).
+	;; Route PC0/PC1 (UART1 TX/RX) and PC2 (RTS).
 	;; GPIO mode 7 is ALT2=1, ALT1=0, DDR=1.
 	in0 a, (PC_DDR)
-	or PORTPIN_FOURBITS_L
+	or UART1_GPIO_PINS
 	out0 (PC_DDR), a
 	in0 a, (PC_ALT1)
 	ld b, a
-	ld a, PORTPIN_FOURBITS_L
+	ld a, UART1_GPIO_PINS
 	cpl
 	and b
 	out0 (PC_ALT1), a
 	in0 a, (PC_ALT2)
-	or PORTPIN_FOURBITS_L
+	or UART1_GPIO_PINS
 	out0 (PC_ALT2), a
 
 	;; 115200 baud from the Agon's 18.432 MHz system clock: divisor 10.
@@ -74,10 +74,9 @@ bios_entry:
 	ld a, UART1_MCTL_RTS          ;; DTR stays off.
 	out0 (UART1_MCTL), a
 
-	;; Clear any stale receive/line/modem status before enabling IRQs.
+	;; Clear stale receive/line status before enabling IRQs.
 	in0 a, (UART1_LSR)
-	in0 a, (UART1_MSR)
-	ld a, UART1_IER_INIT          ;; RX, line-status, and modem deltas (CTS used)
+	ld a, UART1_IER_INIT          ;; RX and line-status interrupts
 	out0 (UART1_IER), a
 	ei
 
@@ -101,6 +100,8 @@ bios_uart1_isr:
 	push ix
 	push iy
 
+;; Handle one IIR cause per entry. Any remaining enabled cause retriggers
+;; after RETI; do not spin rereading IIR inside the ISR.
 bios_uart1_irq_next:
 	in0 a, (UART1_IIR)
 	ld b, a
@@ -117,9 +118,9 @@ bios_uart1_irq_next:
 	cp UART1_IIR_TX_EMPTY         ;; Transmit FIFO empty
 	jr z, bios_uart1_tx_service
 
-	;; Modem IRQs can be raised by any input delta; only CTS affects TX.
-	call bios_uart1_cts_service
-	jr bios_uart1_irq_next
+	;; Modem-status interrupts are disabled; clear any unexpected cause.
+	in0 a, (UART1_MSR)
+	jp bios_uart1_irq_done
 
 bios_uart1_irq_line_status:
 	in0 a, (UART1_LSR)            ;; Reading LSR clears line-status causes.
@@ -160,14 +161,11 @@ bios_uart1_rx_full:
 
 bios_uart1_rx_done:
 	call bios_uart1_update_rts
-	jr bios_uart1_irq_next
+	jp bios_uart1_irq_done
 
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
 ;; slots. Leave TIE enabled only when software data remains queued.
 bios_uart1_tx_service:
-	in0 a, (UART1_MSR)
-	and UART1_MSR_CTS
-	jr z, bios_uart1_tx_disable
 	ld c, UART1_TX_FIFO_CAPACITY
 bios_uart1_tx_loop:
 	ld a, (bios_ts_tail)
@@ -194,31 +192,22 @@ bios_uart1_tx_loop:
 	ld a, (bios_ts_tail)
 	cp b
 	jr z, bios_uart1_tx_disable
-	jp bios_uart1_irq_next
+	call bios_uart1_tie_enable
+	jp bios_uart1_irq_done
 
 bios_uart1_tx_disable:
 	call bios_uart1_tie_disable
-	jp bios_uart1_irq_next
+	jp bios_uart1_irq_done
 
-;; CTS is active-low on the pin; MSR bit 4 is 1 when CTS is asserted.
-;; Reconcile TIE with both CTS and the queued-data state.
-bios_uart1_cts_service:
-	in0 a, (UART1_MSR)            ;; Clears all modem delta bits; ignore non-CTS.
-	and UART1_MSR_CTS
-	jr z, bios_uart1_tie_disable
-	ld a, (bios_ts_head)
-	ld b, a
-	ld a, (bios_ts_tail)
-	cp b
-	jr z, bios_uart1_tie_disable
+bios_uart1_tie_enable:
 	in0 a, (UART1_IER)
-	or UART1_IER_TIE
+	or UART1_IER_TIE              ;; Keep refilling while software TX data remains.
 	out0 (UART1_IER), a
 	ret
 
 bios_uart1_tie_disable:
 	in0 a, (UART1_IER)
-	and UART1_IER_TIE_CLEAR       ;; Preserve RIE, LSIE, and MIIE.
+	and UART1_IER_TIE_CLEAR       ;; Preserve RX and line-status enables.
 	out0 (UART1_IER), a
 	ret
 
@@ -231,8 +220,8 @@ bios_uart1_irq_done:
 	pop af
 	reti.l
 
-;; Update RTS from free space in rs. The one-empty-slot ring has 255 usable
-;; bytes; deassert RTS once fewer than 33 slots remain.
+;; Hysteresis: deassert RTS below 33 free slots; reassert only at 133 free
+;; slots (one complete XMODEM/CRC packet). Keep the current state in between.
 bios_uart1_update_rts:
 	ld a, (bios_rs_tail)
 	ld b, a
@@ -243,6 +232,8 @@ bios_uart1_update_rts:
 	dec a                         ;; free = tail - head - 1 (modulo 256)
 	cp BIOS_RS_RTS_LOW_WATERMARK
 	jr c, bios_uart1_rts_deassert
+	cp BIOS_RS_RTS_REASSERT_WATERMARK
+	ret c                         ;; Preserve current RTS in the hysteresis band.
 	ld a, UART1_MCTL_RTS          ;; MCTL RTS=1 drives active-low RTS asserted.
 	out0 (UART1_MCTL), a
 	ret
@@ -252,7 +243,7 @@ bios_uart1_rts_deassert:
 	ret
 
 ;; API: A=byte to enqueue. Returns carry set if ts is full; otherwise clear.
-;; CTS service enables TIE when CTS is asserted and ts contains data.
+;; A successful enqueue enables TIE to start or resume transmission.
 bios_uart1_tx_put:
 	ld c, a
 	ld a, (bios_ts_head)
@@ -270,7 +261,9 @@ bios_uart1_tx_put:
 	ld a, b
 	inc a
 	ld (bios_ts_head), a
-	call bios_uart1_cts_service ;; Start only if CTS is asserted.
+	in0 a, (UART1_IER)
+	or UART1_IER_TIE
+	out0 (UART1_IER), a
 	or a                         ;; Clear carry for success.
 	ret
 bios_uart1_tx_put_full:
@@ -311,7 +304,7 @@ io_putchar_retry:
 	push af
 	call bios_uart1_tx_put
 	jr nc, io_putchar_queued
-	halt                           ;; TX/CTS interrupt wakes when progress is possible.
+	halt                           ;; TX-empty interrupt wakes after the ISR frees space.
 	jr io_putchar_retry
 io_putchar_queued:
 	pop af
@@ -437,7 +430,6 @@ bios_stack:
 	.set UART1_IER_RIE, 0x01
 	.set UART1_IER_TIE, 0x02
 	.set UART1_IER_LSIE, 0x04
-	.set UART1_IER_MIIE, 0x08
 	.set UART1_IER_TIE_CLEAR, 0xFD
 	.set UART1_IIR_INTBIT, 0x01
 	.set UART1_IIR_INSTS_MASK, 0x0E
@@ -452,14 +444,17 @@ bios_stack:
 	.set UART1_LCTL_8N1, 0x03
 	.set UART1_LCTL_DLAB, 0x80
 	.set UART1_MCTL_RTS, 0x02
-	.set UART1_MSR_CTS, 0x10
 	.set UART1_OFF, 0x02
-	.set PORTPIN_FOURBITS_L, 0x0F
+	.set PORTPIN_ZERO, 0x01
+	.set PORTPIN_ONE, 0x02
+	.set PORTPIN_TWO, 0x04
+	.set UART1_GPIO_PINS, PORTPIN_ZERO | PORTPIN_ONE | PORTPIN_TWO
 	.set BIOS_ZERO, 0
 	.set UART1_BRG_DIVISOR_115200, 10
 	.set UART1_TX_FIFO_CAPACITY, 16
 	.set UART1_FCTL_FIFO_INIT, UART1_FCTL_FIFOEN | UART1_FCTL_CLRRXF | UART1_FCTL_CLRTXF | UART1_FCTL_TRIG_14
-	.set UART1_IER_INIT, UART1_IER_RIE | UART1_IER_LSIE | UART1_IER_MIIE
+	.set UART1_IER_INIT, UART1_IER_RIE | UART1_IER_LSIE
 	.set BIOS_IVT_PAGE, 0xFB
 	.set BIOS_RS_RTS_LOW_WATERMARK, 33
+	.set BIOS_RS_RTS_REASSERT_WATERMARK, 133
 	.set bios_stack_top, 0x010000

@@ -13,11 +13,11 @@ Linker script and memory map
  *(.bios)
  .bios          0x00000000    0x10000 obj/EZ80BIOS.o
                 0x0000e000                bios_entry
-                0x0000e17e                bios_uart1_tx_put
-                0x0000e1a4                bios_uart1_rx_get
-                0x0000e1c9                io_putchar
-                0x0000e1d7                io_getchar
-                0x0000e1de                io_puts
+                0x0000e16b                bios_uart1_tx_put
+                0x0000e195                bios_uart1_rx_get
+                0x0000e1ba                io_putchar
+                0x0000e1c8                io_getchar
+                0x0000e1cf                io_puts
                 0x0000fc00                bios_rs_head
                 0x0000fc01                bios_rs_tail
                 0x0000fc02                bios_ts_head
