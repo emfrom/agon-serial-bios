@@ -1,6 +1,6 @@
-;; EZ80BIOS.s — Absolute BIOS addresses are 0xE000..0xFFFF.
-;; The image is loaded at 0xB7E000, then SRAM remapping makes it appear at
-;; 0x00E000..0x00FFFF. The IVT at 0xFB00 sits just before the ring buffers.
+;; EZ80BIOS.s — BIOS code and hot data occupy internal SRAM at 0xE000..0xFFFF.
+;; The image is loaded at 0xB7E000, then RAM_ADDR_U=0 maps it to page zero.
+;; External SRAM is mapped at 0x000000..0x07FFFF; internal SRAM shadows E000-FFFF.
 ;; build.sh extracts this absolute range into the 8192-byte BIOS image.
 ;; All non-emitting hardware/bit constants are collected in the .set block at EOF.
 
@@ -11,26 +11,75 @@
 	.section .bios,"ax",@progbits
 	.org 0x000000
 bios_reset_stub:
-	jp.lil bios_halt
+	jp.lil bios_soft_start
 
 	.org 0xE000
 
-;; Execution begins directly at the BIOS entry point.
+;; MOS enters here after loading the BIOS into internal SRAM.
+;; Hard start restores the platform memory map, then falls through to soft start.
 bios_entry:
+bios_hard_start:
 	di
-	ld sp, bios_stack_top
-
-	;; Map the 512 KiB external RAM to pages 0x01..0x08, immediately after
-	;; the BIOS page. The BIOS runs from higher-priority on-chip SRAM in page 0.
+	;; Internal SRAM must remain executable while Flash and CS0 are remapped.
+	in0 a, (FLASH_CTRL)
+	and FLASH_DISABLE_MASK
+	out0 (FLASH_CTRL), a
 	xor a
-	out0 (CS0_UBR), a
+	out0 (RAM_ADDR_U), a
+	in0 a, (RAM_CTL)
+	or RAM_CTL_ONCHIP_SRAM_ENABLE
+	out0 (RAM_CTL), a
+	;; Map all 512 KiB of external SRAM to pages 0x00..0x07.
 	ld a, EXTERNAL_RAM_FIRST_PAGE
+	out0 (CS0_UBR), a
 	out0 (CS0_LBR), a
 	ld a, EXTERNAL_RAM_LAST_PAGE
 	out0 (CS0_UBR), a
 
+;; Warm restart entry. RST 00h lands here after the low vectors are installed.
+bios_soft_start:
+	di
+	ld sp, bios_stack_top
+	;; Quiesce interrupt sources left enabled by the previous program.
+	xor a
+	out0 (UART0_IER), a
+	out0 (UART1_IER), a
+	out0 (TMR0_CTL), a
+	out0 (TMR1_CTL), a
+	out0 (TMR2_CTL), a
+	out0 (TMR3_CTL), a
+	out0 (TMR4_CTL), a
+	out0 (TMR5_CTL), a
+	;; Reading each control register clears a pending timer interrupt flag.
+	in0 a, (TMR0_CTL)
+	in0 a, (TMR1_CTL)
+	in0 a, (TMR2_CTL)
+	in0 a, (TMR3_CTL)
+	in0 a, (TMR4_CTL)
+	in0 a, (TMR5_CTL)
+
+	;; Reinstall software RST stubs and the peripheral IVT defaults.
+	ld hl, bios_rst_vector_defaults
+	ld de, BIOS_ZERO
+	ld bc, BIOS_RST_VECTOR_BYTES
+	ldir
+	ld hl, bios_ivt_defaults
+	ld de, bios_ivt_table
+	ld bc, BIOS_IVT_BYTES
+	ldir
 	ld a, BIOS_IVT_PAGE
 	ld i, a
+
+	;; Clear VSync's PB1 alternate function and pending edge before enabling IRQs.
+	in0 a, (PB_DR)
+	or PORTB1_MASK
+	out0 (PB_DR), a
+	in0 a, (PB_ALT1)
+	and PORTB1_MASK_CLEAR
+	out0 (PB_ALT1), a
+	in0 a, (PB_ALT2)
+	and PORTB1_MASK_CLEAR
+	out0 (PB_ALT2), a
 
 	;; Power UART1 before configuring it.
 	in0 a, (CLK_PPD1)
@@ -358,6 +407,7 @@ __bios_wait_inner:
 
 ;; Enter the BIOS idle loop without returning; interrupts continue to run.
 bios_halt:
+	ei
 	jp __bios_idle
 
 	.include "EZ80IO.s"
@@ -366,7 +416,7 @@ bios_loaded_message:
 	.asciz "BIOS Loaded\r\n"
 
 bios_memory_mapped_message:
-	.asciz "Memory mapped at 0x010000\r\n"
+	.asciz "External RAM 0x000000-0x07FFFF; programs at 0x010000\r\n"
 bios_xmodem_loading_message:
 	;; Keep uppercase 'C' out of pre-handshake output: senders treat it as CRC request.
 	.asciz "Waiting for XMODEM at 0x010000\r\n"
@@ -377,10 +427,76 @@ bios_xmodem_press_r_message:
 bios_xmodem_failed_message:
 	.asciz "XMODEM-CRC receive failed\r\n"
 
+;; Software RST stubs copied to external SRAM at 0x000000..0x00003F.
+;; RST 00h restarts the soft initializer; every other RST parks in bios_halt.
+	.org 0xF900
+bios_rst_vector_defaults:
+	jp.lil bios_soft_start
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+
+;; Immutable default copy of the F92 peripheral IVT; active IVT is at FB00.
+	.org 0xFA00
+bios_ivt_defaults:
+	.dw 0, 0, 0, 0
+	.dw __bios_unhandled_isr ; 0x08 Flash
+	.dw __bios_timer0_isr    ; 0x0A PRT0
+	.dw __bios_unhandled_isr ; 0x0C PRT1
+	.dw __bios_unhandled_isr ; 0x0E PRT2
+	.dw __bios_unhandled_isr ; 0x10 PRT3
+	.dw __bios_unhandled_isr ; 0x12 PRT4
+	.dw __bios_unhandled_isr ; 0x14 PRT5
+	.dw __bios_unhandled_isr ; 0x16 RTC
+	.dw __bios_unhandled_isr ; 0x18 UART0
+	.dw __bios_uart1_isr     ; 0x1A UART1
+	.dw __bios_unhandled_isr ; 0x1C I2C
+	.dw __bios_unhandled_isr ; 0x1E SPI
+	.rept 8
+	.dw 0
+	.endr
+	.dw __bios_unhandled_isr ; 0x30 Port B0
+	.dw __bios_unhandled_isr ; 0x32 Port B1
+	.dw __bios_unhandled_isr ; 0x34 Port B2
+	.dw __bios_unhandled_isr ; 0x36 Port B3
+	.dw __bios_unhandled_isr ; 0x38 Port B4
+	.dw __bios_unhandled_isr ; 0x3A Port B5
+	.dw __bios_unhandled_isr ; 0x3C Port B6
+	.dw __bios_unhandled_isr ; 0x3E Port B7
+	.dw __bios_unhandled_isr ; 0x40 Port C0
+	.dw __bios_unhandled_isr ; 0x42 Port C1
+	.dw __bios_unhandled_isr ; 0x44 Port C2
+	.dw __bios_unhandled_isr ; 0x46 Port C3
+	.dw __bios_unhandled_isr ; 0x48 Port C4
+	.dw __bios_unhandled_isr ; 0x4A Port C5
+	.dw __bios_unhandled_isr ; 0x4C Port C6
+	.dw __bios_unhandled_isr ; 0x4E Port C7
+	.dw __bios_unhandled_isr ; 0x50 Port D0
+	.dw __bios_unhandled_isr ; 0x52 Port D1
+	.dw __bios_unhandled_isr ; 0x54 Port D2
+	.dw __bios_unhandled_isr ; 0x56 Port D3
+	.dw __bios_unhandled_isr ; 0x58 Port D4
+	.dw __bios_unhandled_isr ; 0x5A Port D5
+	.dw __bios_unhandled_isr ; 0x5C Port D6
+	.dw __bios_unhandled_isr ; 0x5E Port D7
+	.dw 0, 0, 0, 0
+
 ;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
-;; With I=0xFB, reserved offsets 0x00..0x06 and vectors occupy 0xFB00..0xFB67,
-;; immediately before the ring metadata at 0xFC00.
+;; With I=0xFB, vectors occupy internal SRAM at 0xFB00..0xFB67, before metadata.
 	.org 0xFB00
+bios_ivt_table:
 bios_unused_00:          .dw 0
 bios_unused_02:          .dw 0
 bios_unused_04:          .dw 0
@@ -476,6 +592,7 @@ bios_stack:
 
 ;; Non-emitting constants: register names follow ez80f92.h/ez80f92.inc and
 ;; the eZ80F92 product specification. Keep all hardware values here.
+	.set UART0_IER, 0xC1
 	.set UART1_RBR, 0xD0
 	.set UART1_THR, 0xD0
 	.set UART1_BRG_L, 0xD0
@@ -491,16 +608,34 @@ bios_stack:
 	.set TMR0_CTL, 0x80
 	.set TMR0_RR_L, 0x81
 	.set TMR0_RR_H, 0x82
+	.set TMR1_CTL, 0x83
+	.set TMR2_CTL, 0x86
+	.set TMR3_CTL, 0x89
+	.set TMR4_CTL, 0x8C
+	.set TMR5_CTL, 0x8F
+	.set PB_DR, 0x9A
+	.set PB_ALT1, 0x9C
+	.set PB_ALT2, 0x9D
+	.set RAM_CTL, 0xB4
+	.set RAM_ADDR_U, 0xB5
+	.set FLASH_CTRL, 0xF8
 	.set PC_DDR, 0x9F
 	.set PC_ALT1, 0xA0
 	.set PC_ALT2, 0xA1
 	.set CS0_LBR, 0xA8
 	.set CS0_UBR, 0xA9
 
-	.set EXTERNAL_RAM_FIRST_PAGE, 0x01
-	.set EXTERNAL_RAM_LAST_PAGE, 0x08
+	.set EXTERNAL_RAM_FIRST_PAGE, 0x00
+	.set EXTERNAL_RAM_LAST_PAGE, 0x07
 	.set EXTERNAL_RAM_START_ADDRESS, 0x010000
-	.set XMODEM_LAST_SAFE_FRAME_START, 0x08FF7E
+	.set XMODEM_LAST_SAFE_FRAME_START, 0x07FF7E
+	.set BIOS_RST_VECTOR_BYTES, 0x40
+	.set BIOS_IVT_BYTES, 0x68
+	.set BIOS_IVT_PAGE, 0xFB
+	.set FLASH_DISABLE_MASK, 0xF7
+	.set RAM_CTL_ONCHIP_SRAM_ENABLE, 0x80
+	.set PORTB1_MASK, 0x02
+	.set PORTB1_MASK_CLEAR, 0xFD
 	.set XMODEM_BLOCK_SIZE, 128
 	.set XMODEM_SOH, 0x01
 	.set XMODEM_EOT, 0x04
@@ -548,7 +683,6 @@ bios_stack:
 	.set UART1_TX_FIFO_CAPACITY, 16
 	.set UART1_FCTL_FIFO_INIT, UART1_FCTL_FIFOEN | UART1_FCTL_CLRRXF | UART1_FCTL_CLRTXF | UART1_FCTL_TRIG_14
 	.set UART1_IER_INIT, UART1_IER_RIE | UART1_IER_LSIE
-	.set BIOS_IVT_PAGE, 0xFB
 	.set BIOS_RS_RTS_LOW_WATERMARK, 33
 	.set BIOS_RS_RTS_REASSERT_WATERMARK, 133
 	.set bios_stack_top, 0x010000

@@ -32,12 +32,11 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 
 This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), the 8-byte
 `bin/bios_reset_stub.bin` for address `0x000000`, `bin/ramtest.bin`, and
-`bin/helloserial.bin`. The reset stub starts with `JP.LIL bios_halt`; it is
-emitted separately because the current handoff loads the BIOS at `0x00E000`.
+`bin/helloserial.bin`. The reset stub starts with `JP.LIL bios_soft_start`;
+the soft initializer also copies all eight RST stubs into low external SRAM.
 The build copies the binaries to `sdcard/` and writes an `autoexec.txt` that
-loads and runs the RAM test. The current handoff does not install the reset
-stub at address zero. Generated card contents are ignored by Git; rebuilding
-overwrites them.
+loads and runs the RAM test. Generated card contents are ignored by Git;
+rebuilding overwrites them.
 
 ## Run and test
 
@@ -107,31 +106,34 @@ for the active ADL/MADL mode and device-specific details.
 
 The F92 product specification (PS015317-0120, printed pages 190–192) says the
 8 KiB internal SRAM occupies `{RAM_ADDR_U, 0xE000}` through
-`{RAM_ADDR_U, 0xFFFF}` and takes priority over on-chip Flash and memory chip
-selects on overlap. Thus `RAM_ADDR_U = 0` maps SRAM to `0x00E000–0x00FFFF`, not
-to address `0x000000`.
+`{RAM_ADDR_U, 0xFFFF}` and takes priority over memory chip selects on overlap.
+With `RAM_ADDR_U = 0`, internal SRAM occupies `0x00E000–0x00FFFF` and shadows
+that part of external SRAM.
 
-At BIOS entry, `CS0_LBR`/`CS0_UBR` map the 512 KiB external RAM window to pages
-`0x01`–`0x08` (`0x010000`–`0x08FFFF`), immediately following the BIOS page.
-This remap happens after execution has moved into the higher-priority on-chip
-SRAM, so the BIOS remains executable while CS0 is reconfigured. At startup, the
-BIOS copies the NUL-terminated `Memory mapped at 0x010000\r\n` string (including
-its `\0`) into external SRAM at `0x010000`, then prints it from there through
-`io_puts`/UART1. This checks that the newly mapped RAM is both writable and
-readable.
+The BIOS reserves the entire first 64 KiB (`0x000000–0x00FFFF`) for system use.
+`CS0_LBR`/`CS0_UBR` map the 512 KiB external SRAM to pages `0x00`–`0x07`
+(`0x000000–0x07FFFF`); programs and XMODEM payloads start at `0x010000`.
+The RST stubs occupy the low addresses, while the on-chip SRAM overlay holds
+the BIOS code, active peripheral IVT, hot ISRs, rings, and stack. The hard
+initializer disables Flash, restores the on-chip SRAM mapping, and maps CS0;
+the soft initializer installs RST stubs and default IVT entries. At startup,
+the BIOS copies a diagnostic string to `0x010000` and prints it from external
+SRAM through `io_puts`/UART1.
 
 ## VSync interrupt at handoff
 
 `src/main.c:bios_handoff()` disables CPU interrupts, clears the pending Port B
 bit 1 edge, and returns PB1 to ordinary input mode before transferring control
-to the BIOS. MOS leaves PB1 configured for rising-edge VSync; this BIOS uses
-UART1 and does not install a VSync handler.
+to the BIOS. The soft initializer repeats the PB1 cleanup on warm restart. MOS
+leaves PB1 configured for rising-edge VSync; this BIOS uses UART1 and does not
+install a VSync handler.
 
 ## UART1 interrupt driver
 
 `EZ80BIOS.s` configures UART1 for 115200 8N1 with 16-byte FIFOs and services
-its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; vector table at `0xFB00`, just
-before ring metadata at `0xFC00`). The ISR drains all available RX bytes into
+its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; active table at `0xFB00` in
+internal SRAM, just before ring metadata at `0xFC00`). The soft initializer
+restores the default table before enabling interrupts. The ISR drains all RX bytes into
 `bios_rs_ring` and fills the TX FIFO in bursts from `bios_ts_ring`. The
 256-byte rings reserve one slot to distinguish full from empty, so each holds
 up to 255 bytes. RX overflow drops the byte and increments the wrapping
@@ -146,6 +148,8 @@ set.
 
 - `bios_wait`: busy-wait delay; preserves all caller registers.
 - `bios_halt`: non-returning entry to the interrupt-enabled idle loop.
+- RST `00h`: non-returning soft restart; RST `08h`, `10h`, `18h`, `20h`,
+  `28h`, `30h`, and `38h` enter `bios_halt`.
 - `bios_uart1_tx_put`: byte in `A`; preserves `A`, queues it on success, and
   sets carry if the TX ring is full.
 - `bios_uart1_rx_get`: returns a byte in `A` with carry clear, or carry set if
@@ -161,7 +165,7 @@ set.
 - `io_puts`: blocking NUL-terminated string output; `HL` points to the string;
   preserves all caller registers.
 - `io_xmodem_rx`: blocking XMODEM-CRC binary receive; 24-bit `HL` is the start
-  address in external SRAM (`0x010000..0x08FF7E`). Returns status in `A`
+  address in external SRAM (`0x010000..0x07FF7E`). Returns status in `A`
   (`0` success, nonzero cancel/error/invalid address), preserves `BC`, `DE`,
   `HL`, `IX`, and `IY`, and restores the previous PRT0 vector. `bios_xmodem_wp`
   is the exclusive end address after the payload bytes.
@@ -191,7 +195,7 @@ It ignores other input, clears `A` after `R`/`r`, then jumps to `0x010000`.
 Reads block on UART/timer interrupts; there are no receive timeouts. XMODEM
 transmits complete 128-byte blocks and does not include the exact file length, so
 any final-block padding is also present in memory. Two bytes are reserved for
-the final CRC, limiting a transfer to 4095 blocks (524,160 payload bytes).
+the final CRC, limiting a transfer to 3583 blocks (458,624 payload bytes).
 
 UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
 it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
@@ -201,16 +205,20 @@ so it works with UART adapters that do not provide modem-status signals.
 ### RX/TX function tree
 
 ```text
-bios_entry
-├─ print startup messages
-├─ io_xmodem_rx (HL=0x010000)
-│  ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
-│  ├─ io_getchar (HALT while rs is empty)
-│  ├─ receive 128-byte payload and two CRC bytes
-│  ├─ CRC-16/XMODEM check ──> ACK or NAK
-│  └─ EOT ──> print completion and Press R prompt
-│     └─ wait for R/r, zero A, jump to 0x010000
-└─ transfer error ──> print failure, then __bios_idle
+bios_entry (hard initializer)
+├─ disable Flash; restore internal SRAM and map external SRAM at 0x000000
+└─ bios_soft_start
+   ├─ reset stack; restore RST stubs and the peripheral IVT defaults
+   ├─ initialize UART1/PRT0 and print startup messages
+   └─ io_xmodem_rx (HL=0x010000)
+      ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
+      ├─ io_getchar (HALT while rs is empty)
+      ├─ receive 128-byte payload and two CRC bytes
+      ├─ CRC-16/XMODEM check ──> ACK or NAK
+      └─ EOT ──> print completion and Press R prompt
+         └─ wait for R/r, zero A, jump to 0x010000
+
+transfer error ──> print failure, then __bios_idle
 
 __bios_uart1_isr (UART1 vector 0x1A)
 ├─ RX causes ──> drain UART FIFO into rs, update RTS
