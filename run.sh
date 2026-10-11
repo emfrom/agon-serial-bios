@@ -2,6 +2,9 @@
 set -euo pipefail
 
 baud=115200
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+sdcard="$root/sdcard"
+mkdir -p "$sdcard"
 emulator=$(command -v fab-agon-emulator) || { echo "fab-agon-emulator not found" >&2; exit 1; }
 for tool in socat minicom xterm; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
@@ -24,7 +27,7 @@ for _ in {1..50}; do
 done
 [[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] || { echo "Failed to create virtual serial pair" >&2; exit 1; }
 
-emulator_args=("$@" --no-audio --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
+emulator_args=("$@" --sdcard "$sdcard" --no-audio --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
 debugger=0
 for arg in "$@"; do
   [[ $arg == --debugger || $arg == -d ]] && debugger=1

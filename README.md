@@ -10,8 +10,8 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
   and transfers execution to it.
 - `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
   handoff.
-- `build.sh` assembles and links the BIOS, builds the RAM test, and prepares
-  the default emulator SD-card directory.
+- `build.sh` assembles and links the BIOS, builds the RAM test, and installs
+  the generated files into the repository-local `sdcard/` directory.
 - `run.sh` starts the emulator and a Minicom UART terminal connected through a
   temporary virtual serial pair.
 
@@ -26,9 +26,9 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 ```
 
 This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes) and `bin/ramtest.bin`.
-It also copies both files to `$HOME/.agon-sdcard` and writes an `autoexec.txt`
-that loads and runs the RAM test. Back up any existing files in that directory
-if you need to preserve them.
+It also copies both files to `sdcard/` in this repository and writes an
+`autoexec.txt` that loads and runs the RAM test. The generated card contents
+are ignored by Git. Rebuilding overwrites these files in `sdcard/`.
 
 ## Run and test
 
@@ -45,9 +45,9 @@ Optional emulator arguments can be passed through, for example:
 ./run.sh --debugger
 ```
 
-The script connects emulator UART1 to Minicom at 115200 baud, 8N1. It starts
-the emulator before the terminal in normal mode. `--no-audio` is passed to the
-emulator at launch.
+The script uses this repository's `sdcard/` directory, connects emulator
+UART1 to Minicom at 115200 baud, and starts the emulator before the terminal in
+normal mode. `--no-audio` is passed to the emulator at launch.
 
 BIOS testing uses a **patched Fab Agon Emulator** that correctly identifies
 and dispatches interrupt causes on UART0 and UART1. The patch also advances

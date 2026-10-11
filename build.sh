@@ -22,7 +22,7 @@ dd if=obj/EZ80BIOS.full.bin of=bin/EZ80BIOS.bin \
 
 make
 
-sdcard="$HOME/.agon-sdcard"
+sdcard="$root/sdcard"
 mkdir -p "$sdcard"
 cp bin/EZ80BIOS.bin "$sdcard/EZ80BIOS.bin"
 cp bin/ramtest.bin "$sdcard/ramtest.bin"
