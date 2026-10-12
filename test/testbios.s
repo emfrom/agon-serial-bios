@@ -1,4 +1,4 @@
-;; Loadable RST 10h BIOS API test suite. See BIOS_API.md.
+;; Loadable RST 10h BIOS API test suite. See ../bios/BIOS_API.md.
 	.assume ADL = 1
 	.global testbios
 

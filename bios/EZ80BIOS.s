@@ -636,7 +636,7 @@ bios_api_jump_table:
 __bios_api_call_hl:
 	jp (hl)
 
-	.include "EZ80IO.s"
+	.include "bios/EZ80IO.s"
 
 bios_loaded_message:
 	.asciz "BIOS Loaded\r\n"

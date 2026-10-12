@@ -5,7 +5,7 @@
 
 helloserial:
 	ld hl, helloserial_message
-	ld a, 0x04                     ;; BIOS_OP_PUTS; see BIOS_API.md
+	ld a, 0x04                     ;; BIOS_OP_PUTS; see ../bios/BIOS_API.md
 	rst 0x10
 	ld a, 0x09                     ;; BIOS_OP_HALT
 	rst 0x10

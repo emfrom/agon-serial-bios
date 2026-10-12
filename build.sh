@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
+# This top-level wrapper exists because AgonDev is braindead about project builds.
 set -euo pipefail
 
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-agondev_bin=$(cd -- "$root/../.." && pwd)/bin
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+agondev_bin=$(cd -- "$project_root/../.." && pwd)/bin
+export PATH="$agondev_bin:$PATH"
 
-cd "$root"
+cd "$project_root"
 mkdir -p bin obj
 
 "$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
-  -o obj/EZ80BIOS.o EZ80BIOS.s
-"$agondev_bin/ez80-none-elf-ld" -T "$root/EZ80BIOS.ld" \
+  -o obj/EZ80BIOS.o bios/EZ80BIOS.s
+"$agondev_bin/ez80-none-elf-ld" -T bios/EZ80BIOS.ld \
   --oformat binary -Map bin/EZ80BIOS.map \
   -o obj/EZ80BIOS.full.bin obj/EZ80BIOS.o
 # Keep the low reset vector separate from the 8 KiB internal-SRAM BIOS image.
@@ -28,8 +30,8 @@ dd if=obj/EZ80BIOS.full.bin of=bin/EZ80BIOS.bin \
 }
 
 "$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
-  -o obj/helloserial.o helloserial.s
-"$agondev_bin/ez80-none-elf-ld" -T "$root/helloserial.ld" \
+  -o obj/helloserial.o examples/helloserial.s
+"$agondev_bin/ez80-none-elf-ld" -T examples/helloserial.ld \
   --oformat binary -Map bin/helloserial.map \
   -o obj/helloserial.full.bin obj/EZ80BIOS.o obj/helloserial.o
 dd if=obj/helloserial.full.bin of=bin/helloserial.bin \
@@ -40,8 +42,8 @@ dd if=obj/helloserial.full.bin of=bin/helloserial.bin \
 }
 
 "$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
-  -o obj/testbios.o testbios.s
-"$agondev_bin/ez80-none-elf-ld" -T "$root/testbios.ld" \
+  -o obj/testbios.o test/testbios.s
+"$agondev_bin/ez80-none-elf-ld" -T test/testbios.ld \
   --oformat binary -Map bin/testbios.map \
   -o obj/testbios.full.bin obj/EZ80BIOS.o obj/testbios.o
 dd if=obj/testbios.full.bin of=bin/testbios.bin \
@@ -51,9 +53,9 @@ dd if=obj/testbios.full.bin of=bin/testbios.bin \
   exit 1
 }
 
-make
+make OBJS=obj/main.o
 
-sdcard="$root/sdcard"
+sdcard="$project_root/sdcard"
 mkdir -p "$sdcard"
 cp bin/EZ80BIOS.bin "$sdcard/EZ80BIOS.bin"
 cp bin/bios_reset_stub.bin "$sdcard/bios_reset_stub.bin"
@@ -61,4 +63,4 @@ cp bin/biosloader.bin "$sdcard/biosloader.bin"
 cp bin/helloserial.bin "$sdcard/helloserial.bin"
 printf 'LOAD BIOSLOADER.BIN\nRUN\n' > "$sdcard/autoexec.txt"
 
-echo "Built testbios.bin; copied BIOS, reset stub, biosloader, and helloserial to $sdcard"
+echo "Built BIOS, tests, and example; copied files to $sdcard"

@@ -4,18 +4,10 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 
 ## Project contents
 
-- `EZ80BIOS.s` implements BIOS startup, interrupt/timer services, vectors, and
-  memory layout. It includes `EZ80IO.s` in the shared BIOS section.
-- `EZ80IO.s` contains the UART1 IO APIs and XMODEM-CRC receiver.
-- `BIOS_API.md` documents the RST 10h dispatcher operations and calling convention.
-- `helloserial.s` is a small XMODEM-loaded test program; `helloserial.ld` links
-  it against the BIOS symbols and places it at `0x010000`.
-- `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
-  and transfers execution to it.
-- `Makefile` builds `biosloader.bin`, which loads the BIOS and hands off
-  execution.
-- `build.sh` assembles and links the BIOS, builds the BIOS loader, and installs
-  the generated files into the repository-local `sdcard/` directory.
+- `bios/` contains the BIOS sources, API documentation, and linker script.
+- `src/main.c` and the root `Makefile` are the AgonDev-dependent BIOS loader.
+- `test/` contains the RST 10h API test program and emulator harness.
+- `examples/` contains `helloserial`, an XMODEM-loaded example program.
 - `run.sh` starts the emulator and Minicom through a temporary virtual serial
   pair; `--xmodem FILE` sends a file with `sx` before opening Minicom.
 
@@ -129,7 +121,7 @@ install a VSync handler.
 
 ## UART1 interrupt driver
 
-`EZ80BIOS.s` configures UART1 for 115200 8N1 with 16-byte FIFOs and services
+`bios/EZ80BIOS.s` configures UART1 for 115200 8N1 with 16-byte FIFOs and services
 its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; active table at `0xFB00` in
 internal SRAM, just before ring metadata at `0xFC00`). The soft initializer
 restores the default table before enabling interrupts. The ISR drains all RX bytes into
@@ -147,7 +139,7 @@ routine or data symbols. Set `A` to an operation and execute unprefixed
 returns through the RST call frame. Carry and other flags are operation-specific.
 The BIOS's internal routines remain implementation details.
 
-Operation definitions and register contracts are documented in [`BIOS_API.md`](BIOS_API.md). The dispatcher operation IDs are:
+Operation definitions and register contracts are documented in [`bios/BIOS_API.md`](bios/BIOS_API.md). The dispatcher operation IDs are:
 
 | Operation | Register arguments | Result |
 | --- | --- | --- |
@@ -174,16 +166,16 @@ saved by the ISR (`AF`, `BC`, `DE`, `HL`, `IX`, `IY`) and must end with
 `pop hl; jp (hl)` to
 chain to the next handler or return to the ISR. They must not execute `EI` or
 terminate with `RET` / `RETI`; the BIOS completes the interrupt. See
-`BIOS_API.md` for statuses and details.
+`bios/BIOS_API.md` for statuses and details.
 RST `00h` is the non-returning soft restart; RST `08h`, `18h`, `20h`, `28h`,
 `30h`, and `38h` enter the idle loop. Interrupt handlers preserve the
 interrupted register set.
 
 ### BIOS API test suite
 
-`testbios.s` is a loadable program that exercises every public operation.
-Build it with `./build.sh`; the result is `bin/testbios.bin`. Run the automated
-emulator test with `python3 testbios.py`. The harness requires `sx` (lrzsz) and
+`test/testbios.s` is a loadable program that exercises every public operation.
+Build it with `./build.sh`; the result is `bin/testbios.bin`. Run the
+automated emulator test with `python3 test/testbios.py`. The harness requires `sx` (lrzsz) and
 `fab-agon-emulator` on `PATH`; pass `--emulator`, `--vdp`, and/or `--mos` when
 the emulator or its firmware is installed elsewhere. It uses `sx` for both the
 initial program load and the suite's XMODEM receive test. It also verifies
