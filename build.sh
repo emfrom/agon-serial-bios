@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# This top-level wrapper exists because AgonDev is braindead about project builds.
+# Build the AgonDev BIOS loader together with the BIOS, examples, and tests.
 set -euo pipefail
 
 project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
