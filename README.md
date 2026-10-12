@@ -18,8 +18,7 @@ and `sdcard/` are ignored by Git.
 
 ## Run
 
-Install our [patched Fab Agon Emulator](https://github.com/emfrom/fab-agon-emulator)
-from its [releases page](https://github.com/emfrom/fab-agon-emulator/releases),
+Install [patched Fab Agon Emulator](https://github.com/emfrom/fab-agon-emulator)
 plus Minicom, Python 3, `timeout`, and one supported terminal (`st`, `ghosty`,
 `ghostty`, `alacritty`, or `xterm`). The launcher checks the emulator's
 `--version` once with a three-second timeout; its version must include
@@ -64,9 +63,13 @@ supports serial input/output, bounded XMODEM-CRC receive, and PRT0 interrupt
 extensions.
 
 At startup, the BIOS waits for an XMODEM-CRC upload to `0x010000`. Transfers
-use 128-byte frames, so the final frame may include padding. After a successful
-upload, press `R` to run the program. The receiver checks both the caller's
-capacity and physical SRAM limits before accepting each frame.
+use 128-byte frames, so the final frame may include padding. The receiver checks
+both the caller's capacity and physical SRAM limits before accepting each frame.
+
+### Run the uploaded binary
+
+When the transfer completes, the BIOS displays `Press R to run`. Press `r` or
+`R` to start the uploaded binary at `0x010000`.
 
 ## Tests
 
