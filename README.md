@@ -141,7 +141,8 @@ up to 255 bytes. RX overflow drops the byte and increments the wrapping
 ## Public call interface
 
 Client code uses the software `RST 10h` entry rather than linking against BIOS
-routine or data symbols. Set `A` to an operation and execute `RST.LIS 10h`;
+routine or data symbols. Set `A` to an operation and execute unprefixed
+`RST 10h`;
 `A` is always clobbered (and may contain an operation result). The dispatcher
 returns through the RST call frame. Carry and other flags are operation-specific.
 The BIOS's internal routines remain implementation details.
@@ -167,6 +168,15 @@ specified above, callers must not depend on register or flag preservation.
 RST `00h` is the non-returning soft restart; RST `08h`, `18h`, `20h`, `28h`,
 `30h`, and `38h` enter the idle loop. Interrupt handlers preserve the
 interrupted register set.
+
+### BIOS API test suite
+
+`testbios.s` is a loadable program that exercises every public operation.
+Build it with `./build.sh`; the result is `bin/testbios.bin`. Run the automated
+emulator test with `python3 testbios.py`. The harness requires `sx` (lrzsz) and
+`fab-agon-emulator` on `PATH`; pass `--emulator`, `--vdp`, and/or `--mos` when
+the emulator or its firmware is installed elsewhere. It uses `sx` for both the
+initial program load and the suite's XMODEM receive test.
 
 ## XMODEM-CRC receive
 

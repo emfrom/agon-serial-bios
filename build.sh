@@ -39,6 +39,18 @@ dd if=obj/helloserial.full.bin of=bin/helloserial.bin \
   exit 1
 }
 
+"$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
+  -o obj/testbios.o testbios.s
+"$agondev_bin/ez80-none-elf-ld" -T "$root/testbios.ld" \
+  --oformat binary -Map bin/testbios.map \
+  -o obj/testbios.full.bin obj/EZ80BIOS.o obj/testbios.o
+dd if=obj/testbios.full.bin of=bin/testbios.bin \
+  bs=1 skip=$((0x10000)) status=none
+[[ -s bin/testbios.bin ]] || {
+  echo "testbios.bin was not generated" >&2
+  exit 1
+}
+
 make
 
 sdcard="$root/sdcard"
@@ -49,4 +61,4 @@ cp bin/biosloader.bin "$sdcard/biosloader.bin"
 cp bin/helloserial.bin "$sdcard/helloserial.bin"
 printf 'LOAD BIOSLOADER.BIN\nRUN\n' > "$sdcard/autoexec.txt"
 
-echo "Copied BIOS, reset stub, biosloader, and helloserial; wrote autoexec.txt to $sdcard"
+echo "Built testbios.bin; copied BIOS, reset stub, biosloader, and helloserial to $sdcard"

@@ -1,10 +1,10 @@
 # BIOS RST 10h API
 
-The BIOS exposes its client interface through software interrupt `RST.LIS 10h`.
+The BIOS exposes its client interface through software interrupt `RST 10h`.
 This is a DOS/BIOS-style operation dispatcher: load the operation number into
-`A`, prepare any arguments in the listed registers, then execute the RST. The
-RST return address remains on the stack and returning operations return to the
-instruction following the RST.
+`A`, prepare any arguments in the listed registers, then execute the unprefixed
+RST instruction. In ADL mode this leaves a native 24-bit return address on the
+stack, so returning operations return to the instruction following the RST.
 
 This API is **not** the IBM PC video BIOS `INT 10h` interface. These are the
 operations implemented by this Agon BIOS dispatcher.
@@ -121,7 +121,7 @@ idle loop.
 
 Tail-calls the 24-bit function address in `HL`. The function executes with the
 RST caller's return frame on the stack; a normal return from the target returns
-to the instruction after `RST.LIS 10h`. The function pointer must refer to
+to the instruction after `RST 10h`. The function pointer must refer to
 executable memory and the target must follow the caller's expected eZ80 calling
 convention. Other arguments, such as `BC` or `DE`, are available to the target;
 `HL` is occupied by the function pointer at dispatch time.
