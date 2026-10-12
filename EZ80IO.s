@@ -73,9 +73,7 @@ bios_uart1_tx_put:
 	cp d
 	jr z, __bios_uart1_tx_put_full
 	ld hl, bios_ringbuffer_out
-	ld de, BIOS_ZERO
-	ld e, b
-	add hl, de
+	ld l, b
 	ld (hl), c
 	ld a, b
 	inc a
@@ -109,9 +107,7 @@ bios_uart1_rx_get:
 	cp b
 	jr z, __bios_uart1_rx_get_empty
 	ld hl, bios_ringbuffer_in
-	ld de, BIOS_ZERO
-	ld e, b
-	add hl, de
+	ld l, b
 	ld a, (hl)
 	push af                        ;; Preserve return byte across RTS update.
 	inc b
@@ -173,9 +169,7 @@ io_peek:
 	cp b
 	jr z, io_peek_empty
 	ld hl, bios_ringbuffer_in
-	ld de, BIOS_ZERO
-	ld e, b
-	add hl, de
+	ld l, b
 	ld a, (hl)
 	or a
 	pop hl
@@ -190,8 +184,8 @@ io_peek_empty:
 	ret
 
 ;; Read exactly BC bytes from UART1 into the 24-bit address in HL.
-;; IX/IY are caller-saved. IX is used as the destination pointer; the 24-bit
-;; count is held in BIOS scratch data. Other caller registers are preserved.
+;; IX/IY are caller-saved. IX is used as the destination pointer; BC is
+;; decremented as the count and restored from the stack before returning.
 io_nread:
 	push af
 	push bc
@@ -199,19 +193,15 @@ io_nread:
 	push hl
 	ld (bios_nread_dest), hl
 	ld ix, (bios_nread_dest)
-	ld (bios_nread_count), bc
 io_nread_loop:
-	ld hl, (bios_nread_count)
-	ld de, BIOS_ZERO
+	ld hl, BIOS_ZERO
 	or a
-	sbc hl, de
+	sbc hl, bc
 	jr z, io_nread_done
 	call io_getchar
 	ld (ix+0), a
 	inc ix
-	ld hl, (bios_nread_count)
-	dec hl
-	ld (bios_nread_count), hl
+	dec bc
 	jr io_nread_loop
 io_nread_done:
 	pop hl

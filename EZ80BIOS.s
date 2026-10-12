@@ -248,13 +248,9 @@ __bios_uart1_rx_service:
 	call __bios_uart1_rx_drain
 	jp __bios_uart1_irq_done
 
-;; Drain all available hardware RX bytes into rs. Also called by PRT0 so a
-;; sub-threshold UART FIFO is serviced on the next 10 ms tick.
+;; Drain all available hardware RX bytes into rs. Clobbers AF/BC/DE/HL; its
+;; UART and timer ISR callers already preserve the interrupted register set.
 __bios_uart1_rx_drain:
-	push af
-	push bc
-	push de
-	push hl
 __bios_uart1_rx_loop:
 	in0 a, (UART1_LSR)
 	and UART1_LSR_DR              ;; Receiver data ready?
@@ -270,34 +266,28 @@ __bios_uart1_rx_loop:
 	jr z, __bios_uart1_rx_full      ;; One slot is reserved to distinguish full.
 
 	ld hl, bios_ringbuffer_in
-	ld de, BIOS_ZERO
-	ld e, b
-	add hl, de
+	ld l, b
 	ld (hl), c
 	ld a, b
 	inc a
 	ld (bios_rs_head), a
-	call __bios_uart1_update_rts
 	jr __bios_uart1_rx_loop
 
 __bios_uart1_rx_full:
 	ld a, (bios_rs_overflow)
 	inc a
 	ld (bios_rs_overflow), a
-	call __bios_uart1_update_rts
 	jr __bios_uart1_rx_loop
 
 __bios_uart1_rx_done:
 	call __bios_uart1_update_rts
-	pop hl
-	pop de
-	pop bc
-	pop af
 	ret
 
 ;; PRT0 wakes HALT, advances uptime, and drains residual UART1 FIFO bytes.
 __bios_timer0_isr:
 	push af
+	push bc
+	push de
 	push hl
 	in0 a, (TMR0_CTL)             ;; Reading CTL clears the timer IRQ flag.
 	ld hl, (bios_uptime_10ms)
@@ -305,6 +295,8 @@ __bios_timer0_isr:
 	ld (bios_uptime_10ms), hl
 	call __bios_uart1_rx_drain
 	pop hl
+	pop de
+	pop bc
 	pop af
 	ei
 	reti.l
@@ -322,9 +314,7 @@ __bios_uart1_tx_loop:
 	jr z, __bios_uart1_tx_disable
 
 	ld hl, bios_ringbuffer_out
-	ld de, BIOS_ZERO
-	ld e, b
-	add hl, de
+	ld l, b
 	ld a, (hl)
 	out0 (UART1_THR), a
 	inc b
@@ -630,7 +620,6 @@ bios_xmodem_crc_lo:         .db 0
 bios_xmodem_received_crc_hi: .db 0
 bios_xmodem_received_crc_lo: .db 0
 	.org 0xFC26
-bios_nread_count:            .ds 3, 0
 bios_nread_dest:             .ds 3, 0
 
 	.org 0xFD00
