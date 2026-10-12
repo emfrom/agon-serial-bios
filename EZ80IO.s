@@ -373,9 +373,7 @@ __io_xmodem_bad_header:
 	ld (bios_xmodem_header_ok), a
 
 __io_xmodem_read_data:
-	xor a
-	ld (bios_xmodem_crc_hi), a
-	ld (bios_xmodem_crc_lo), a
+	ld bc, BIOS_ZERO             ;; BC holds the 16-bit CRC during payload input.
 	ld a, XMODEM_BLOCK_SIZE
 	ld (bios_xmodem_data_count), a
 __io_xmodem_data_loop:
@@ -396,21 +394,19 @@ __io_xmodem_skip_data_store:
 
 	call io_getchar
 	ld (bios_xmodem_received_crc_hi), a
-	ld b, a
 	ld a, (bios_xmodem_store)
 	or a
 	jr z, __io_xmodem_skip_crc_hi_store
-	ld a, b
+	ld a, (bios_xmodem_received_crc_hi)
 	ld (de), a
 	inc de
 __io_xmodem_skip_crc_hi_store:
 	call io_getchar
 	ld (bios_xmodem_received_crc_lo), a
-	ld b, a
 	ld a, (bios_xmodem_store)
 	or a
 	jr z, __io_xmodem_skip_crc_lo_store
-	ld a, b
+	ld a, (bios_xmodem_received_crc_lo)
 	ld (de), a
 	inc de
 __io_xmodem_skip_crc_lo_store:
@@ -418,15 +414,11 @@ __io_xmodem_skip_crc_lo_store:
 	ld a, (bios_xmodem_header_ok)
 	or a
 	jp z, __io_xmodem_reject
-	ld a, (bios_xmodem_crc_hi)
-	ld b, a
 	ld a, (bios_xmodem_received_crc_hi)
 	cp b
 	jp nz, __io_xmodem_reject
-	ld a, (bios_xmodem_crc_lo)
-	ld b, a
 	ld a, (bios_xmodem_received_crc_lo)
-	cp b
+	cp c
 	jp nz, __io_xmodem_reject
 
 	ld a, (bios_xmodem_store)
@@ -454,33 +446,24 @@ __io_xmodem_reject:
 	jp __io_xmodem_wait_frame
 
 __io_xmodem_crc_update:
-	;; A=data byte. CRC-16/XMODEM: init 0, poly 0x1021, MSB first.
-	push af
-	push bc
-	ld b, a
-	ld a, (bios_xmodem_crc_hi)
+	;; A=data byte; BC=CRC high:low. Keep CRC in registers during the bit loop.
+	;; CRC-16/XMODEM uses init 0, poly 0x1021, MSB first, no final XOR.
 	xor b
-	ld (bios_xmodem_crc_hi), a
-	ld c, 8
+	ld b, a
+	ld l, 8
 __io_xmodem_crc_bit:
-	ld a, (bios_xmodem_crc_lo)
-	add a, a
-	ld (bios_xmodem_crc_lo), a
-	ld a, (bios_xmodem_crc_hi)
-	rla
-	ld (bios_xmodem_crc_hi), a
+	sla c
+	rl b
 	jr nc, __io_xmodem_crc_next
-	ld a, (bios_xmodem_crc_lo)
+	ld a, c
 	xor XMODEM_CRC_POLY_LO
-	ld (bios_xmodem_crc_lo), a
-	ld a, (bios_xmodem_crc_hi)
+	ld c, a
+	ld a, b
 	xor XMODEM_CRC_POLY_HI
-	ld (bios_xmodem_crc_hi), a
+	ld b, a
 __io_xmodem_crc_next:
-	dec c
+	dec l
 	jr nz, __io_xmodem_crc_bit
-	pop bc
-	pop af
 	ret
 
 __io_xmodem_complete:

@@ -615,8 +615,6 @@ bios_xmodem_header_ok:      .db 0
 bios_xmodem_store:          .db 0
 bios_xmodem_data_count:     .db 0
 bios_xmodem_byte:           .db 0
-bios_xmodem_crc_hi:         .db 0
-bios_xmodem_crc_lo:         .db 0
 bios_xmodem_received_crc_hi: .db 0
 bios_xmodem_received_crc_lo: .db 0
 	.org 0xFC26
