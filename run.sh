@@ -4,15 +4,36 @@ set -euo pipefail
 baud=115200
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 sdcard="$root/sdcard"
-mkdir -p "$sdcard"
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} [--xmodem FILE] [--help] [emulator arguments...]
+
+Launch the Agon emulator with a temporary UART1 connection to Minicom.
+
+Options:
+  --xmodem FILE   Send FILE to the BIOS using XMODEM before opening Minicom
+  -h, --help      Show this help and exit
+  emulator args   Pass remaining arguments through to fab-agon-emulator
+
+Examples:
+  ${0##*/}
+  ${0##*/} --xmodem bin/helloserial.bin
+  ${0##*/} --debugger
+EOF
+}
 
 xmodem_file=""
 emulator_args=()
 while (($#)); do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --xmodem)
       if [[ -n $xmodem_file || $# -lt 2 || $2 == --* ]]; then
-        echo "Usage: $0 [--xmodem FILE] [emulator arguments...]" >&2
+        usage >&2
         exit 2
       fi
       xmodem_file=$2
@@ -34,6 +55,7 @@ while (($#)); do
   esac
 done
 
+mkdir -p "$sdcard"
 emulator=$(command -v fab-agon-emulator) || { echo "fab-agon-emulator not found" >&2; exit 1; }
 for tool in socat minicom; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
