@@ -38,6 +38,7 @@ __io_xmodem_start_retry:
 	xor a
 	ld (bios_xmodem_retry_armed), a
 	ld a, XMODEM_CRC_REQUEST
+	ld c, a
 	call bios_uart1_tx_put       ;; Nonblocking: never wait inside an ISR.
 	jr __io_xmodem_start_resume
 __io_xmodem_start_arm_retry:
@@ -57,14 +58,13 @@ __io_xmodem_start_resume:
 	jp __bios_timer0_isr
 
 
-;; API: A=byte to enqueue. Returns carry set if ts is full; otherwise clear.
+;; API: C=byte to enqueue. Returns carry set if ts is full; otherwise clear.
 ;; A successful enqueue enables TIE to start or resume transmission.
 bios_uart1_tx_put:
 	push af
 	push bc
 	push de
 	push hl
-	ld c, a
 	ld a, (bios_ts_head)
 	ld b, a
 	inc a
@@ -87,7 +87,7 @@ bios_uart1_tx_put:
 	pop de
 	pop bc
 	pop af
-	or a                         ;; Preserve input A and clear carry for success.
+	or a                         ;; Clear carry for success.
 	ret
 __bios_uart1_tx_put_full:
 	pop hl
@@ -131,8 +131,9 @@ __bios_uart1_rx_get_empty:
 	pop bc
 	ret
 
-;; Blocking UART1 character output. A is retried until the TX ring accepts it.
+;; Blocking UART1 character output. C is retried until the TX ring accepts it.
 io_putchar:
+	ld a, c
 	push af
 io_putchar_retry:
 	pop af
@@ -189,21 +190,18 @@ io_peek_empty:
 	ret
 
 ;; Read exactly BC bytes from UART1 into the 24-bit address in HL.
-;; Preserve all caller registers; only the destination memory is changed.
+;; IX/IY are caller-saved. IX is used as the destination pointer; the 24-bit
+;; count is held in BIOS scratch data. Other caller registers are preserved.
 io_nread:
 	push af
 	push bc
 	push de
 	push hl
-	push ix
-	push iy
-	push hl
-	pop ix
-	push bc
-	pop iy
+	ld (bios_nread_dest), hl
+	ld ix, (bios_nread_dest)
+	ld (bios_nread_count), bc
 io_nread_loop:
-	push iy
-	pop hl
+	ld hl, (bios_nread_count)
 	ld de, BIOS_ZERO
 	or a
 	sbc hl, de
@@ -211,11 +209,11 @@ io_nread_loop:
 	call io_getchar
 	ld (ix+0), a
 	inc ix
-	dec iy
+	ld hl, (bios_nread_count)
+	dec hl
+	ld (bios_nread_count), hl
 	jr io_nread_loop
 io_nread_done:
-	pop iy
-	pop ix
 	pop hl
 	pop de
 	pop bc
@@ -231,6 +229,7 @@ io_puts_loop:
 	ld a, (hl)
 	or a
 	jr z, io_puts_done
+	ld c, a
 	call io_putchar
 	inc hl
 	jr io_puts_loop
@@ -269,6 +268,7 @@ __io_xmodem_start_phase_ready:
 	ld (bios_timer0_vector+1), a
 	ei
 	ld a, XMODEM_CRC_REQUEST
+	ld c, a
 	call io_putchar
 __io_xmodem_flag_wait:
 	di
@@ -288,11 +288,10 @@ __io_xmodem_flag_ready:
 ;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
 ;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
 io_xmodem_rx:
+	;; IX/IY are caller-saved by the BIOS API; do not save/restore them here.
 	push bc
 	push de
 	push hl
-	push ix
-	push iy
 	ld (bios_xmodem_wp), hl
 	ld de, EXTERNAL_RAM_START_ADDRESS
 	or a
@@ -318,6 +317,7 @@ __io_xmodem_wait_first_byte:
 	cp XMODEM_CAN
 	jp z, __io_xmodem_cancelled
 	ld a, XMODEM_NAK
+	ld c, a
 	call io_putchar
 	jr __io_xmodem_wait_first_byte
 
@@ -330,6 +330,7 @@ __io_xmodem_wait_frame:
 	cp XMODEM_CAN
 	jp z, __io_xmodem_cancelled
 	ld a, XMODEM_NAK
+	ld c, a
 	call io_putchar
 	jr __io_xmodem_wait_frame
 
@@ -451,12 +452,14 @@ __io_xmodem_skip_crc_lo_store:
 	ld (bios_xmodem_have_block), a
 __io_xmodem_ack:
 	ld a, XMODEM_ACK
+	ld c, a
 	call io_putchar
 	jp __io_xmodem_wait_frame
 
 __io_xmodem_reject:
 	;; WP is unchanged, so a retransmission overwrites the rejected frame.
 	ld a, XMODEM_NAK
+	ld c, a
 	call io_putchar
 	jp __io_xmodem_wait_frame
 
@@ -492,6 +495,7 @@ __io_xmodem_crc_next:
 
 __io_xmodem_complete:
 	ld a, XMODEM_ACK
+	ld c, a
 	call io_putchar
 	xor a
 	jp __io_xmodem_rx_done
@@ -500,6 +504,7 @@ __io_xmodem_cancelled:
 	jp __io_xmodem_rx_done
 __io_xmodem_abort:
 	ld a, XMODEM_CAN
+	ld c, a
 	call io_putchar
 	call io_putchar
 	ld a, XMODEM_STATUS_ERROR
@@ -512,16 +517,12 @@ __io_xmodem_rx_done:
 	call __io_xmodem_restore_timer_vector
 	ei
 	pop af
-	pop iy
-	pop ix
 	pop hl
 	pop de
 	pop bc
 	ret
 __io_xmodem_rx_bad_start:
 	ld a, XMODEM_STATUS_ERROR
-	pop iy
-	pop ix
 	pop hl
 	pop de
 	pop bc

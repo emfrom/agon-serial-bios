@@ -6,7 +6,20 @@
 
 	.assume ADL = 1
 
-	.include "EZ80BIOS_public.inc"
+;; RST 10h API operation numbers (see BIOS_API.md).
+	.set BIOS_OP_PUTCHAR, 0x00
+	.set BIOS_OP_GETCHAR, 0x01
+	.set BIOS_OP_PEEK, 0x02
+	.set BIOS_OP_NREAD, 0x03
+	.set BIOS_OP_PUTS, 0x04
+	.set BIOS_OP_XMODEM_RX, 0x05
+	.set BIOS_OP_TX_PUT, 0x06
+	.set BIOS_OP_RX_GET, 0x07
+	.set BIOS_OP_WAIT, 0x08
+	.set BIOS_OP_HALT, 0x09
+	.set BIOS_OP_CALL_HL, 0x0A
+	.set BIOS_OP_COUNT, 0x0B
+	.set BIOS_STATUS_BAD_OPERATION, 0xFF
 
 	.section .bios,"ax",@progbits
 	.org 0x000000
@@ -17,6 +30,7 @@ bios_reset_stub:
 
 ;; MOS enters here after loading the BIOS into internal SRAM.
 ;; Hard start restores the platform memory map, then falls through to soft start.
+	.global bios_entry                  ;; Linker entry, not a client API call.
 bios_entry:
 bios_hard_start:
 	di
@@ -410,6 +424,46 @@ bios_halt:
 	ei
 	jp __bios_idle
 
+;; Public software-call entry. Index a 24-bit address table using A, restore
+;; the argument registers, then jump through IX. IX is caller-saved by contract.
+bios_api_dispatch:
+	cp BIOS_OP_COUNT
+	jr nc, __bios_api_bad_operation
+	push bc
+	push de
+	push hl
+	ld hl, BIOS_ZERO
+	ld l, a
+	add hl, hl
+	add hl, hl
+	ld de, bios_api_jump_table
+	add hl, de
+	ld ix, (hl)
+	pop hl
+	pop de
+	pop bc
+	jp (ix)
+__bios_api_bad_operation:
+	ld a, BIOS_STATUS_BAD_OPERATION
+	or a
+	ret
+
+;; Four-byte entries hold 24-bit target addresses plus one unused byte.
+bios_api_jump_table:
+	.long io_putchar
+	.long io_getchar
+	.long io_peek
+	.long io_nread
+	.long io_puts
+	.long io_xmodem_rx
+	.long bios_uart1_tx_put
+	.long bios_uart1_rx_get
+	.long bios_wait
+	.long bios_halt
+	.long __bios_api_call_hl
+__bios_api_call_hl:
+	jp (hl)
+
 	.include "EZ80IO.s"
 
 bios_loaded_message:
@@ -428,14 +482,14 @@ bios_xmodem_failed_message:
 	.asciz "XMODEM-CRC receive failed\r\n"
 
 ;; Software RST stubs copied to external SRAM at 0x000000..0x00003F.
-;; RST 00h restarts the soft initializer; every other RST parks in bios_halt.
+;; RST 00h restarts; RST 10h enters the public API dispatcher; other RSTs halt.
 	.org 0xF900
 bios_rst_vector_defaults:
 	jp.lil bios_soft_start
 	.ds 3, 0
 	jp.lil bios_halt
 	.ds 3, 0
-	jp.lil bios_halt
+	jp.lil bios_api_dispatch
 	.ds 3, 0
 	jp.lil bios_halt
 	.ds 3, 0
@@ -575,6 +629,9 @@ bios_xmodem_crc_hi:         .db 0
 bios_xmodem_crc_lo:         .db 0
 bios_xmodem_received_crc_hi: .db 0
 bios_xmodem_received_crc_lo: .db 0
+	.org 0xFC26
+bios_nread_count:            .ds 3, 0
+bios_nread_dest:             .ds 3, 0
 
 	.org 0xFD00
 bios_rs_ring:

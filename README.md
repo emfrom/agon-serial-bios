@@ -7,15 +7,14 @@ An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
 - `EZ80BIOS.s` implements BIOS startup, interrupt/timer services, vectors, and
   memory layout. It includes `EZ80IO.s` in the shared BIOS section.
 - `EZ80IO.s` contains the UART1 IO APIs and XMODEM-CRC receiver.
-- `EZ80BIOS_public.inc` declares the public BIOS/IO symbols for both the BIOS
-  source and client assembly modules.
+- `BIOS_API.md` documents the RST 10h dispatcher operations and calling convention.
 - `helloserial.s` is a small XMODEM-loaded test program; `helloserial.ld` links
   it against the BIOS symbols and places it at `0x010000`.
 - `src/main.c` loads the BIOS image into internal SRAM, prepares the handoff,
   and transfers execution to it.
-- `Makefile` builds `ramtest.bin`, which loads the BIOS and exercises the
-  handoff.
-- `build.sh` assembles and links the BIOS, builds the RAM test, and installs
+- `Makefile` builds `biosloader.bin`, which loads the BIOS and hands off
+  execution.
+- `build.sh` assembles and links the BIOS, builds the BIOS loader, and installs
   the generated files into the repository-local `sdcard/` directory.
 - `run.sh` starts the emulator and Minicom through a temporary virtual serial
   pair; `--xmodem FILE` sends a file with `sx` before opening Minicom.
@@ -31,11 +30,11 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 ```
 
 This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), the 8-byte
-`bin/bios_reset_stub.bin` for address `0x000000`, `bin/ramtest.bin`, and
+`bin/bios_reset_stub.bin` for address `0x000000`, `bin/biosloader.bin`, and
 `bin/helloserial.bin`. The reset stub starts with `JP.LIL bios_soft_start`;
 the soft initializer also copies all eight RST stubs into low external SRAM.
 The build copies the binaries to `sdcard/` and writes an `autoexec.txt` that
-loads and runs the RAM test. Generated card contents are ignored by Git;
+loads and runs the BIOS loader. Generated card contents are ignored by Git;
 rebuilding overwrites them.
 
 ## Run and test
@@ -71,7 +70,7 @@ accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github
 
 To test XMODEM, send `bin/helloserial.bin` from Minicom using Xmodem while the
 BIOS is waiting for a transfer. Press a key at the BIOS prompt after the
-transfer; the program prints `Hello, world!` and enters `bios_halt`.
+transfer; the program prints `Hello, world!` and enters the idle loop.
 
 The UART1 end-to-end BIOS smoke test reached the BIOS startup output over the
 serial link. BIOS output uses CRLF so terminal emulators such as Minicom return
@@ -118,7 +117,7 @@ the BIOS code, active peripheral IVT, hot ISRs, rings, and stack. The hard
 initializer disables Flash, restores the on-chip SRAM mapping, and maps CS0;
 the soft initializer installs RST stubs and default IVT entries. At startup,
 the BIOS copies a diagnostic string to `0x010000` and prints it from external
-SRAM through `io_puts`/UART1.
+SRAM through the BIOS's internal string-output routine and UART1.
 
 ## VSync interrupt at handoff
 
@@ -139,42 +138,42 @@ restores the default table before enabling interrupts. The ISR drains all RX byt
 up to 255 bytes. RX overflow drops the byte and increments the wrapping
 `bios_rs_overflow` counter.
 
-Assembly entry points:
+## Public call interface
 
-Returning routines preserve caller registers unless a register is documented as
-an output; `AF` may change when `A` or carry is a result. `bios_entry` and
-`bios_halt` do not return. Interrupt handlers preserve the interrupted register
-set.
+Client code uses the software `RST 10h` entry rather than linking against BIOS
+routine or data symbols. Set `A` to an operation and execute `RST.LIS 10h`;
+`A` is always clobbered (and may contain an operation result). The dispatcher
+returns through the RST call frame. Carry and other flags are operation-specific.
+The BIOS's internal routines remain implementation details.
 
-- `bios_wait`: busy-wait delay; preserves all caller registers.
-- `bios_halt`: non-returning entry to the interrupt-enabled idle loop.
-- RST `00h`: non-returning soft restart; RST `08h`, `10h`, `18h`, `20h`,
-  `28h`, `30h`, and `38h` enter `bios_halt`.
-- `bios_uart1_tx_put`: byte in `A`; preserves `A`, queues it on success, and
-  sets carry if the TX ring is full.
-- `bios_uart1_rx_get`: returns a byte in `A` with carry clear, or carry set if
-  the RX ring is empty; preserves `BC`, `DE`, and `HL`.
-- `io_putchar`: blocking output of `A`; preserves all caller registers.
-- `io_getchar`: blocking input; returns the byte in `A` and preserves
-  `BC`, `DE`, `HL`, `IX`, and `IY`.
-- `io_peek`: nonblocking RX-ring peek; returns the next byte in `A` with carry
-  clear, or carry set if empty; preserves `BC`, `DE`, and `HL`.
-- `io_nread`: blocking binary input; 24-bit `HL` points to the destination and
-  24-bit `BC` is the exact byte count. It writes the requested bytes and
-  preserves all caller registers.
-- `io_puts`: blocking NUL-terminated string output; `HL` points to the string;
-  preserves all caller registers.
-- `io_xmodem_rx`: blocking XMODEM-CRC binary receive; 24-bit `HL` is the start
-  address in external SRAM (`0x010000..0x07FF7E`). Returns status in `A`
-  (`0` success, nonzero cancel/error/invalid address), preserves `BC`, `DE`,
-  `HL`, `IX`, and `IY`, and restores the previous PRT0 vector. `bios_xmodem_wp`
-  is the exclusive end address after the payload bytes.
+Operation definitions and register contracts are documented in [`BIOS_API.md`](BIOS_API.md). The dispatcher operation IDs are:
+
+| Operation | Register arguments | Result |
+| --- | --- | --- |
+| `BIOS_OP_PUTCHAR` | `C` = character | blocking output |
+| `BIOS_OP_GETCHAR` | — | character in `A` |
+| `BIOS_OP_PEEK` | — | byte in `A`; carry set if RX ring is empty |
+| `BIOS_OP_NREAD` | `HL` = destination, `BC` = byte count | blocking binary read |
+| `BIOS_OP_PUTS` | `HL` = NUL-terminated string | blocking string output |
+| `BIOS_OP_XMODEM_RX` | `HL` = destination in external SRAM | status in `A` (`0` success, nonzero error) |
+| `BIOS_OP_TX_PUT` | `C` = byte | carry set if TX ring is full |
+| `BIOS_OP_RX_GET` | — | byte in `A`; carry set if RX ring is empty |
+| `BIOS_OP_WAIT` | — | busy-wait delay |
+| `BIOS_OP_HALT` | — | does not return; enters the idle loop |
+| `BIOS_OP_CALL_HL` | `HL` = function pointer | tail-calls the function through the RST frame |
+
+`HL` and `DE` carry addresses, and `BC` carries counts. Unless a result is
+specified above, callers must not depend on register or flag preservation.
+RST `00h` is the non-returning soft restart; RST `08h`, `18h`, `20h`, `28h`,
+`30h`, and `38h` enter the idle loop. Interrupt handlers preserve the
+interrupted register set.
 
 ## XMODEM-CRC receive
 
-At startup the BIOS prints `Waiting for XMODEM at 0x010000`, then calls
-`io_xmodem_rx` with `HL=0x010000`. The pre-handshake output intentionally avoids
-an uppercase `C`, which an XMODEM sender interprets as a CRC request. The
+At startup the BIOS prints `Waiting for XMODEM at 0x010000` and internally
+calls its receiver with `HL=0x010000`. Client programs can invoke the same
+operation through `BIOS_OP_XMODEM_RX`. The pre-handshake output intentionally
+avoids an uppercase `C`, which an XMODEM sender interprets as a CRC request. The
 routine receives 128-byte XMODEM frames through the UART1 RX ring. PRT0 ticks
 every 10 ms, increments the 24-bit `bios_uptime_10ms` value, and drains residual
 hardware RX FIFO bytes into the ring. During the handshake, the routine saves
@@ -210,9 +209,9 @@ bios_entry (hard initializer)
 └─ bios_soft_start
    ├─ reset stack; restore RST stubs and the peripheral IVT defaults
    ├─ initialize UART1/PRT0 and print startup messages
-   └─ io_xmodem_rx (HL=0x010000)
+   └─ RST 10h / BIOS_OP_XMODEM_RX (HL=0x010000)
       ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
-      ├─ io_getchar (HALT while rs is empty)
+      ├─ BIOS_OP_GETCHAR (HALT while rs is empty)
       ├─ receive 128-byte payload and two CRC bytes
       ├─ CRC-16/XMODEM check ──> ACK or NAK
       └─ EOT ──> print completion and Press R prompt
