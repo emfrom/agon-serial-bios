@@ -34,8 +34,9 @@ bios_reset_stub:
 	.org 0xE000
 
 ;; MOS enters here after loading the BIOS into internal SRAM.
-;; Hard start restores the platform memory map, then falls through to soft start.
+;; Hard start restores the platform memory map, then jumps to persistent soft start.
 	.global bios_entry                  ;; Linker entry, not a client API call.
+bios_ivt_table:
 bios_entry:
 bios_hard_start:
 	di
@@ -55,6 +56,121 @@ bios_hard_start:
 	ld a, EXTERNAL_RAM_LAST_PAGE
 	out0 (CS0_UBR), a
 
+	;; Hard start is transient: after its jump, the runtime IVT replaces it.
+	jp.lil bios_soft_start
+	;; Packed runtime state begins immediately after the 0x68-byte IVT.
+	.org 0xE068
+bios_rs_head:                  .db 0
+bios_rs_tail:                  .db 0
+bios_ts_head:                  .db 0
+bios_ts_tail:                  .db 0
+bios_rs_overflow:              .db 0
+bios_uptime_10ms:              .ds 3, 0
+bios_xmodem_wp:                .ds 3, 0
+bios_xmodem_remaining:         .ds 3, 0
+bios_xmodem_retry_armed:       .db 0
+bios_xmodem_start_flag:        .db 0
+bios_timer0_isr_active:        .db 0
+bios_xmodem_expected:          .db 0
+bios_xmodem_have_block:        .db 0
+bios_xmodem_block:             .db 0
+bios_xmodem_complement:        .db 0
+bios_xmodem_header_ok:         .db 0
+bios_xmodem_store:             .db 0
+bios_xmodem_data_count:        .db 0
+bios_xmodem_byte:              .db 0
+bios_xmodem_received_crc_hi:   .db 0
+bios_xmodem_received_crc_lo:   .db 0
+bios_nread_dest:               .ds 3, 0
+bios_timer0_extensions_present:.db 0
+bios_timer0_extensions:        .ds 24, 0
+bios_vector_op_status:         .db 0
+bios_vector_request_handler:   .ds 3, 0
+	;; The stack and byte rings have fixed, compile-time bases. The rings must be
+	;; page-aligned because their hot paths replace only the low address byte.
+	.org 0xE100
+bios_stack:
+	.ds 256, 0
+	.set bios_stack_top, 0xE200
+
+	.org 0xE200
+bios_rs_ring:
+bios_ringbuffer_in:
+	.ds 256, 0
+
+	.org 0xE300
+bios_ts_ring:
+bios_ringbuffer_out:
+	.ds 256, 0
+
+;; Software RST stubs copied to external SRAM at 0x000000..0x00003F.
+;; RST 00h restarts; RST 10h enters the public API dispatcher; others halt.
+	.org 0xE400
+bios_rst_vector_defaults:
+	jp.lil bios_soft_start
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_api_dispatch
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+	jp.lil bios_halt
+	.ds 3, 0
+
+;; Immutable default copy of the peripheral IVT; active IVT is at E000.
+	.org 0xE440
+bios_ivt_defaults:
+	.dw 0, 0, 0, 0
+	.dw __bios_unhandled_isr ; 0x08 Flash
+	.dw __bios_timer0_isr    ; 0x0A PRT0
+	.dw __bios_unhandled_isr ; 0x0C PRT1
+	.dw __bios_unhandled_isr ; 0x0E PRT2
+	.dw __bios_unhandled_isr ; 0x10 PRT3
+	.dw __bios_unhandled_isr ; 0x12 PRT4
+	.dw __bios_unhandled_isr ; 0x14 PRT5
+	.dw __bios_unhandled_isr ; 0x16 RTC
+	.dw __bios_unhandled_isr ; 0x18 UART0
+	.dw __bios_uart1_isr     ; 0x1A UART1
+	.dw __bios_unhandled_isr ; 0x1C I2C
+	.dw __bios_unhandled_isr ; 0x1E SPI
+	.rept 8
+	.dw 0
+	.endr
+	.dw __bios_unhandled_isr ; 0x30 Port B0
+	.dw __bios_unhandled_isr ; 0x32 Port B1
+	.dw __bios_unhandled_isr ; 0x34 Port B2
+	.dw __bios_unhandled_isr ; 0x36 Port B3
+	.dw __bios_unhandled_isr ; 0x38 Port B4
+	.dw __bios_unhandled_isr ; 0x3A Port B5
+	.dw __bios_unhandled_isr ; 0x3C Port B6
+	.dw __bios_unhandled_isr ; 0x3E Port B7
+	.dw __bios_unhandled_isr ; 0x40 Port C0
+	.dw __bios_unhandled_isr ; 0x42 Port C1
+	.dw __bios_unhandled_isr ; 0x44 Port C2
+	.dw __bios_unhandled_isr ; 0x46 Port C3
+	.dw __bios_unhandled_isr ; 0x48 Port C4
+	.dw __bios_unhandled_isr ; 0x4A Port C5
+	.dw __bios_unhandled_isr ; 0x4C Port C6
+	.dw __bios_unhandled_isr ; 0x4E Port C7
+	.dw __bios_unhandled_isr ; 0x50 Port D0
+	.dw __bios_unhandled_isr ; 0x52 Port D1
+	.dw __bios_unhandled_isr ; 0x54 Port D2
+	.dw __bios_unhandled_isr ; 0x56 Port D3
+	.dw __bios_unhandled_isr ; 0x58 Port D4
+	.dw __bios_unhandled_isr ; 0x5A Port D5
+	.dw __bios_unhandled_isr ; 0x5C Port D6
+	.dw __bios_unhandled_isr ; 0x5E Port D7
+	.dw 0, 0, 0, 0
+
+;; Runtime code and all BIOS functions follow the fixed workspace/templates.
+	.org 0xE4A8
 ;; Warm restart entry. RST 00h lands here after the low vectors are installed.
 bios_soft_start:
 	di
@@ -653,175 +769,6 @@ bios_xmodem_press_r_message:
 bios_xmodem_failed_message:
 	.asciz "XMODEM-CRC receive failed\r\n"
 
-;; Software RST stubs copied to external SRAM at 0x000000..0x00003F.
-;; RST 00h restarts; RST 10h enters the public API dispatcher; other RSTs halt.
-	.org 0xF900
-bios_rst_vector_defaults:
-	jp.lil bios_soft_start
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-	jp.lil bios_api_dispatch
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-	jp.lil bios_halt
-	.ds 3, 0
-
-;; Immutable default copy of the F92 peripheral IVT; active IVT is at FB00.
-	.org 0xFA00
-bios_ivt_defaults:
-	.dw 0, 0, 0, 0
-	.dw __bios_unhandled_isr ; 0x08 Flash
-	.dw __bios_timer0_isr    ; 0x0A PRT0
-	.dw __bios_unhandled_isr ; 0x0C PRT1
-	.dw __bios_unhandled_isr ; 0x0E PRT2
-	.dw __bios_unhandled_isr ; 0x10 PRT3
-	.dw __bios_unhandled_isr ; 0x12 PRT4
-	.dw __bios_unhandled_isr ; 0x14 PRT5
-	.dw __bios_unhandled_isr ; 0x16 RTC
-	.dw __bios_unhandled_isr ; 0x18 UART0
-	.dw __bios_uart1_isr     ; 0x1A UART1
-	.dw __bios_unhandled_isr ; 0x1C I2C
-	.dw __bios_unhandled_isr ; 0x1E SPI
-	.rept 8
-	.dw 0
-	.endr
-	.dw __bios_unhandled_isr ; 0x30 Port B0
-	.dw __bios_unhandled_isr ; 0x32 Port B1
-	.dw __bios_unhandled_isr ; 0x34 Port B2
-	.dw __bios_unhandled_isr ; 0x36 Port B3
-	.dw __bios_unhandled_isr ; 0x38 Port B4
-	.dw __bios_unhandled_isr ; 0x3A Port B5
-	.dw __bios_unhandled_isr ; 0x3C Port B6
-	.dw __bios_unhandled_isr ; 0x3E Port B7
-	.dw __bios_unhandled_isr ; 0x40 Port C0
-	.dw __bios_unhandled_isr ; 0x42 Port C1
-	.dw __bios_unhandled_isr ; 0x44 Port C2
-	.dw __bios_unhandled_isr ; 0x46 Port C3
-	.dw __bios_unhandled_isr ; 0x48 Port C4
-	.dw __bios_unhandled_isr ; 0x4A Port C5
-	.dw __bios_unhandled_isr ; 0x4C Port C6
-	.dw __bios_unhandled_isr ; 0x4E Port C7
-	.dw __bios_unhandled_isr ; 0x50 Port D0
-	.dw __bios_unhandled_isr ; 0x52 Port D1
-	.dw __bios_unhandled_isr ; 0x54 Port D2
-	.dw __bios_unhandled_isr ; 0x56 Port D3
-	.dw __bios_unhandled_isr ; 0x58 Port D4
-	.dw __bios_unhandled_isr ; 0x5A Port D5
-	.dw __bios_unhandled_isr ; 0x5C Port D6
-	.dw __bios_unhandled_isr ; 0x5E Port D7
-	.dw 0, 0, 0, 0
-
-;; F92 vector entries are 16-bit ISR addresses, little-endian at I:IVECT.
-;; With I=0xFB, vectors occupy internal SRAM at 0xFB00..0xFB67, before metadata.
-	.org 0xFB00
-bios_ivt_table:
-bios_unused_00:          .dw 0
-bios_unused_02:          .dw 0
-bios_unused_04:          .dw 0
-bios_unused_06:          .dw 0
-bios_flash_vector:       .dw __bios_unhandled_isr ; 0x08 Flash
-bios_timer0_vector:      .dw __bios_timer0_isr    ; 0x0A PRT0
-bios_timer1_vector:      .dw __bios_unhandled_isr ; 0x0C PRT1
-bios_timer2_vector:      .dw __bios_unhandled_isr ; 0x0E PRT2
-bios_timer3_vector:      .dw __bios_unhandled_isr ; 0x10 PRT3
-bios_timer4_vector:      .dw __bios_unhandled_isr ; 0x12 PRT4
-bios_timer5_vector:      .dw __bios_unhandled_isr ; 0x14 PRT5
-bios_rtc_vector:         .dw __bios_unhandled_isr ; 0x16 RTC
-bios_uart0_vector:       .dw __bios_unhandled_isr ; 0x18 UART0
-bios_uart1_vector:       .dw __bios_uart1_isr    ; 0x1A UART1
-bios_i2c_vector:         .dw __bios_unhandled_isr ; 0x1C I2C
-bios_spi_vector:         .dw __bios_unhandled_isr ; 0x1E SPI
-bios_unused_20:          .dw 0                 ; 0x20 unused
-bios_unused_22:          .dw 0                 ; 0x22 unused
-bios_unused_24:          .dw 0                 ; 0x24 unused
-bios_unused_26:          .dw 0                 ; 0x26 unused
-bios_unused_28:          .dw 0                 ; 0x28 unused
-bios_unused_2a:          .dw 0                 ; 0x2A unused
-bios_unused_2c:          .dw 0                 ; 0x2C unused
-bios_unused_2e:          .dw 0                 ; 0x2E unused
-bios_portb0_vector:      .dw __bios_unhandled_isr ; 0x30 Port B0
-bios_portb1_vector:      .dw __bios_unhandled_isr ; 0x32 Port B1
-bios_portb2_vector:      .dw __bios_unhandled_isr ; 0x34 Port B2
-bios_portb3_vector:      .dw __bios_unhandled_isr ; 0x36 Port B3
-bios_portb4_vector:      .dw __bios_unhandled_isr ; 0x38 Port B4
-bios_portb5_vector:      .dw __bios_unhandled_isr ; 0x3A Port B5
-bios_portb6_vector:      .dw __bios_unhandled_isr ; 0x3C Port B6
-bios_portb7_vector:      .dw __bios_unhandled_isr ; 0x3E Port B7
-bios_portc0_vector:      .dw __bios_unhandled_isr ; 0x40 Port C0
-bios_portc1_vector:      .dw __bios_unhandled_isr ; 0x42 Port C1
-bios_portc2_vector:      .dw __bios_unhandled_isr ; 0x44 Port C2
-bios_portc3_vector:      .dw __bios_unhandled_isr ; 0x46 Port C3
-bios_portc4_vector:      .dw __bios_unhandled_isr ; 0x48 Port C4
-bios_portc5_vector:      .dw __bios_unhandled_isr ; 0x4A Port C5
-bios_portc6_vector:      .dw __bios_unhandled_isr ; 0x4C Port C6
-bios_portc7_vector:      .dw __bios_unhandled_isr ; 0x4E Port C7
-bios_portd0_vector:      .dw __bios_unhandled_isr ; 0x50 Port D0
-bios_portd1_vector:      .dw __bios_unhandled_isr ; 0x52 Port D1
-bios_portd2_vector:      .dw __bios_unhandled_isr ; 0x54 Port D2
-bios_portd3_vector:      .dw __bios_unhandled_isr ; 0x56 Port D3
-bios_portd4_vector:      .dw __bios_unhandled_isr ; 0x58 Port D4
-bios_portd5_vector:      .dw __bios_unhandled_isr ; 0x5A Port D5
-bios_portd6_vector:      .dw __bios_unhandled_isr ; 0x5C Port D6
-bios_portd7_vector:      .dw __bios_unhandled_isr ; 0x5E Port D7
-bios_unused_60:          .dw 0                 ; 0x60 unused
-bios_unused_62:          .dw 0                 ; 0x62 unused
-bios_unused_64:          .dw 0                 ; 0x64 unused
-bios_unused_66:          .dw 0                 ; 0x66 unused
-
-	.org 0xFC00
-bios_rs_head:     .db 0
-bios_rs_tail:     .db 0
-bios_ts_head:     .db 0
-bios_ts_tail:     .db 0
-bios_rs_overflow: .db 0
-
-	.org 0xFC10
-bios_uptime_10ms:           .ds 3, 0
-bios_xmodem_wp:             .ds 3, 0
-bios_xmodem_remaining:      .ds 3, 0
-bios_xmodem_retry_armed:    .db 0
-bios_xmodem_start_flag:     .db 0
-bios_timer0_isr_active:     .db 0
-bios_xmodem_expected:       .db 0
-bios_xmodem_have_block:     .db 0
-bios_xmodem_block:          .db 0
-bios_xmodem_complement:     .db 0
-bios_xmodem_header_ok:      .db 0
-bios_xmodem_store:          .db 0
-bios_xmodem_data_count:     .db 0
-bios_xmodem_byte:           .db 0
-bios_xmodem_received_crc_hi: .db 0
-bios_xmodem_received_crc_lo: .db 0
-	.org 0xFC27
-bios_nread_dest:              .ds 3, 0
-bios_timer0_extensions_present:.db 0
-bios_timer0_extensions:       .ds 24, 0
-bios_vector_op_status:        .db 0
-bios_vector_request_handler: .ds 3, 0
-
-	.org 0xFD00
-bios_rs_ring:
-bios_ringbuffer_in:
-	.ds 256, 0
-
-	.org 0xFE00
-bios_ts_ring:
-bios_ringbuffer_out:
-	.ds 256, 0
-
-	.org 0xFF00
-bios_stack:
-	.ds 256, 0
-
-;; Non-emitting constants: register names follow ez80f92.h/ez80f92.inc and
 ;; the eZ80F92 product specification. Keep all hardware values here.
 	.set UART0_IER, 0xC1
 	.set UART1_RBR, 0xD0
@@ -863,7 +810,7 @@ bios_stack:
 	.set XMODEM_BOOT_MAX_SIZE, 0x070000
 	.set BIOS_RST_VECTOR_BYTES, 0x40
 	.set BIOS_IVT_BYTES, 0x68
-	.set BIOS_IVT_PAGE, 0xFB
+	.set BIOS_IVT_PAGE, 0xE0
 	.set FLASH_DISABLE_MASK, 0xF7
 	.set RAM_CTL_ONCHIP_SRAM_ENABLE, 0x80
 	.set PORTB1_MASK, 0x02
@@ -919,4 +866,3 @@ bios_stack:
 	.set UART1_IER_INIT, UART1_IER_RIE | UART1_IER_LSIE
 	.set BIOS_RS_RTS_LOW_WATERMARK, 33
 	.set BIOS_RS_RTS_REASSERT_WATERMARK, 133
-	.set bios_stack_top, 0x010000

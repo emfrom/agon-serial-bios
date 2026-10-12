@@ -1,6 +1,6 @@
 # agon-serial-bios
 
-An interrupt-driven UART1 BIOS and SRAM-resident RAM test for the Agon eZ80.
+An interrupt-driven UART1 BIOS for the Agon eZ80, with XMODEM-CRC support and an RST 10h API.
 
 ## Project contents
 
@@ -122,10 +122,12 @@ install a VSync handler.
 ## UART1 interrupt driver
 
 `bios/EZ80BIOS.s` configures UART1 for 115200 8N1 with 16-byte FIFOs and services
-its vectored interrupt (`I=0xFB`, `IVECT 0x1A`; active table at `0xFB00` in
-internal SRAM, just before ring metadata at `0xFC00`). The soft initializer
-restores the default table before enabling interrupts. The ISR drains all RX bytes into
-`bios_rs_ring` and fills the TX FIFO in bursts from `bios_ts_ring`. The
+its vectored interrupt (`I=0xE0`, `IVECT 0x1A`; active table at `0xE000–0xE067`,
+overlaying the hard-start image after startup). Mutable state begins at `0xE068`,
+followed by the stack at `0xE100–0xE1FF` and page-aligned RX/TX rings at `0xE200`
+and `0xE300`. The soft initializer restores the default table before enabling
+interrupts. The ISR drains all RX bytes into `bios_rs_ring` and fills the TX FIFO
+in bursts from `bios_ts_ring`. The
 256-byte rings reserve one slot to distinguish full from empty, so each holds
 up to 255 bytes. RX overflow drops the byte and increments the wrapping
 `bios_rs_overflow` counter.
