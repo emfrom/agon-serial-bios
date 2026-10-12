@@ -109,11 +109,11 @@ if (( debugger )); then
   # The debugger reads commands from stdin, so keep it attached to this TTY.
   # Open the UART terminal first in this special interactive mode.
   launch_terminal
-  "$emulator" "${emulator_args[@]}"
+  SDL_VIDEODRIVER=dummy "$emulator" "${emulator_args[@]}"
   wait "$terminal_pid" 2>/dev/null || true
 else
   # Normal mode starts the emulator before any UART client.
-  "$emulator" "${emulator_args[@]}" &
+  SDL_VIDEODRIVER=dummy "$emulator" "${emulator_args[@]}" &
   emulator_pid=$!
   sleep 0.5
   if [[ -n $xmodem_file ]]; then
