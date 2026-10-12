@@ -7,7 +7,7 @@ An interrupt-driven UART1 BIOS for the Agon eZ80, with XMODEM-CRC support and an
 - `bios/` contains the BIOS sources, API documentation, and linker script.
 - `src/main.c` and the root `Makefile` are the AgonDev-dependent BIOS loader.
 - `test/` contains the RST 10h API test program and emulator harness.
-- `examples/` contains `helloserial`, an XMODEM-loaded example program.
+- `examples/` contains the XMODEM-loaded `helloserial` and `xwasd` programs.
 - `run.sh` starts the emulator and Minicom through a temporary virtual serial
   pair; `--xmodem FILE` sends a file with `sx` before opening Minicom.
 
@@ -21,17 +21,17 @@ The build expects the AgonDev toolchain: `ez80-none-elf-as` and
 ./build.sh
 ```
 
-This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), the 8-byte
-`bin/bios_reset_stub.bin` for address `0x000000`, `bin/biosloader.bin`, and
-`bin/helloserial.bin`. The reset stub starts with `JP.LIL bios_soft_start`;
-the soft initializer also copies all eight RST stubs into low external SRAM.
+This creates `bin/EZ80BIOS.bin` (exactly 8192 bytes), `bin/biosloader.bin`, and
+the example programs `bin/helloserial.bin` and `bin/xwasd.bin`. The soft
+initializer copies all eight RST stubs (the full 0x40-byte RST map) into low
+external SRAM at `0x000000`.
 The build copies the binaries to `sdcard/` and writes an `autoexec.txt` that
 loads and runs the BIOS loader. Generated card contents are ignored by Git;
 rebuilding overwrites them.
 
 ## Run and test
 
-The runtime script requires `fab-agon-emulator`, `socat`, and `minicom`, plus
+The runtime script requires `fab-agon-emulator`, `python3`, and `minicom`, plus
 one of `st`, `ghosty`/`ghostty`, `alacritty`, or `xterm` on `PATH`:
 
 ```sh
@@ -53,16 +53,30 @@ through, for example:
 
 The script uses this repository's `sdcard/` directory, connects emulator
 UART1 to Minicom at 115200 baud, and starts the emulator before the terminal in
-normal mode. `--no-audio` is passed to the emulator at launch.
+normal mode. Minicom's upload directory defaults to the repository's `bin/`.
+A UART bridge answers the terminal-size query with Minicom's actual `stty size`,
+since Minicom itself does not answer `CSI 18 t`. `--no-audio` is passed to the
+emulator at launch. By default `run.sh` uses the first `fab-agon-emulator` on
+`PATH`; set `FAB_AGON_EMULATOR=/path/to/fab-agon-emulator` to select a specific
+build. Firmware is loaded from `$XDG_DATA_HOME/fab-agon-emulator` (defaulting
+to `~/.local/share/fab-agon-emulator`); set `FAB_AGON_FIRMWARE_DIR` if it is
+installed elsewhere. `run.sh` passes explicit VDP and MOS paths to the emulator.
+It first runs a headless, audio-disabled `--version` check with a 3-second
+limit; unsupported or unresponsive builds are rejected without retry.
 
 BIOS testing uses a **patched Fab Agon Emulator** that correctly identifies
 and dispatches interrupt causes on UART0 and UART1. The patch also advances
 peripherals while the CPU is halted and wakes the CPU when an interrupt is
-accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89).
+accepted; these changes are tracked in [Fab Agon Emulator PR #89](https://github.com/tomm/fab-agon-emulator/pull/89). The emulator also needs commit `506b068` (skip HostFS hooks when flash is disabled), since the BIOS overlays code in the `0xE000` internal-SRAM region.
 
 To test XMODEM, send `bin/helloserial.bin` from Minicom using Xmodem while the
 BIOS is waiting for a transfer. Press a key at the BIOS prompt after the
 transfer; the program prints `Hello, world!` and enters the idle loop.
+
+Run the screen-size-query/WASD example with `./run.sh --xmodem bin/xwasd.bin`.
+It requests the terminal dimensions using xterm's `CSI 18 t`, places an `X` at
+the center, and moves it with `w`, `a`, `s`, and `d`. Ctrl-C, Ctrl-D, Space, or
+Return soft-restarts the BIOS; other input is ignored.
 
 The UART1 end-to-end BIOS smoke test reached the BIOS startup output over the
 serial link. BIOS output uses CRLF so terminal emulators such as Minicom return
@@ -182,7 +196,11 @@ automated emulator test with `python3 test/testbios.py`. The harness requires `s
 the emulator or its firmware is installed elsewhere. It uses `sx` for both the
 initial program load and the suite's XMODEM receive test. It also verifies
 eight chained PRT0 slots, duplicate registration, full-table rejection,
-remove-all behavior, and stopping callbacks after removal.
+remove-all behavior, and stopping callbacks after removal. The memory layout
+check is `python3 test/testbios_layout.py`; `python3 test/test_uart_bridge.py`
+checks the serial/terminal bridge; `python3 test/test_run_script.py` verifies the
+Minicom upload directory and terminal-size handoff; and `python3 test/testxwasd.py`
+exercises the WASD example through the emulator, including the IVT-overlay startup path.
 
 ## XMODEM-CRC receive
 

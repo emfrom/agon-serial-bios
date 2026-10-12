@@ -56,8 +56,53 @@ while (($#)); do
 done
 
 mkdir -p "$sdcard"
-emulator=$(command -v fab-agon-emulator) || { echo "fab-agon-emulator not found" >&2; exit 1; }
-for tool in socat minicom; do
+if [[ -n ${FAB_AGON_EMULATOR:-} ]]; then
+  emulator=$FAB_AGON_EMULATOR
+  [[ -x $emulator ]] || { echo "FAB_AGON_EMULATOR is not executable: $emulator" >&2; exit 1; }
+else
+  emulator=$(command -v fab-agon-emulator) || { echo "fab-agon-emulator not found" >&2; exit 1; }
+fi
+command -v timeout >/dev/null || { echo "timeout is required for the emulator pre-flight check" >&2; exit 1; }
+if ! version_output=$(SDL_VIDEODRIVER=dummy timeout -k 1s 3s "$emulator" --version --no-audio 2>&1) ||
+   ! grep -Eq 'empatch-[[:xdigit:]]{6}' <<<"$version_output"; then
+  echo "Error: this launcher requires our patched Fab Agon Emulator (version must include empatch-<6 hex digits>)." >&2
+  [[ -n $version_output ]] && printf 'Emulator response: %s\n' "$version_output" >&2
+  echo "Download the patched emulator: https://github.com/emfrom/fab-agon-emulator/releases" >&2
+  exit 1
+fi
+
+firmware=platform
+has_vdp=0
+has_mos=0
+for ((i=0; i<${#emulator_args[@]}; i++)); do
+  case ${emulator_args[i]} in
+    --vdp) has_vdp=1; i=$((i + 1)) ;;
+    --vdp=*) has_vdp=1 ;;
+    --mos) has_mos=1; i=$((i + 1)) ;;
+    --mos=*) has_mos=1 ;;
+    --firmware)
+      if ((i + 1 < ${#emulator_args[@]})); then
+        firmware=${emulator_args[i + 1]}
+        i=$((i + 1))
+      fi
+      ;;
+    --firmware=*) firmware=${emulator_args[i]#*=} ;;
+  esac
+done
+firmware_dir=${FAB_AGON_FIRMWARE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/fab-agon-emulator}
+if ((!has_vdp)); then
+  vdp_firmware="$firmware_dir/vdp_${firmware}.so"
+  [[ -r $vdp_firmware ]] || vdp_firmware="$firmware_dir/vdp_console8.so"
+  [[ -r $vdp_firmware ]] || { echo "VDP firmware not found in $firmware_dir (set FAB_AGON_FIRMWARE_DIR or pass --vdp)" >&2; exit 1; }
+  emulator_args+=(--vdp "$vdp_firmware")
+fi
+if ((!has_mos)); then
+  mos_firmware="$firmware_dir/mos_${firmware}.bin"
+  [[ -r $mos_firmware ]] || mos_firmware="$firmware_dir/mos_console8.bin"
+  [[ -r $mos_firmware ]] || { echo "MOS firmware not found in $firmware_dir (set FAB_AGON_FIRMWARE_DIR or pass --mos)" >&2; exit 1; }
+  emulator_args+=(--mos "$mos_firmware")
+fi
+for tool in python3 minicom; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
 done
 if [[ -n $xmodem_file ]]; then
@@ -88,18 +133,27 @@ tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/agon-serial-bios.XXXXXX")
 cleanup() {
   if [[ -n ${terminal_pid:-} ]]; then kill "$terminal_pid" 2>/dev/null || true; fi
   if [[ -n ${emulator_pid:-} ]]; then kill "$emulator_pid" 2>/dev/null || true; fi
-  if [[ -n ${socat_pid:-} ]]; then kill "$socat_pid" 2>/dev/null || true; wait "$socat_pid" 2>/dev/null || true; fi
+  if [[ -n ${bridge_pid:-} ]]; then kill "$bridge_pid" 2>/dev/null || true; wait "$bridge_pid" 2>/dev/null || true; fi
   rm -rf -- "$tmpdir"
 }
 trap cleanup EXIT INT TERM
 
-socat "PTY,link=$tmpdir/emulator,raw,echo=0" "PTY,link=$tmpdir/terminal,raw,echo=0" &
-socat_pid=$!
+printf '24 80\n' > "$tmpdir/screen-size"
+bridge_args=(
+  --emulator-link "$tmpdir/emulator"
+  --terminal-link "$tmpdir/terminal"
+  --size-file "$tmpdir/screen-size"
+)
+if [[ -n $xmodem_file ]]; then
+  bridge_args+=(--ready-file "$tmpdir/bios-ready" --discard-before-ready)
+fi
+python3 "$root/tools/ansi_uart_bridge.py" "${bridge_args[@]}" &
+bridge_pid=$!
 for _ in {1..50}; do
   [[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] && break
   sleep 0.1
 done
-[[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] || { echo "Failed to create virtual serial pair" >&2; exit 1; }
+[[ -e $tmpdir/emulator && -e $tmpdir/terminal ]] || { echo "Failed to create UART bridge" >&2; exit 1; }
 
 emulator_args+=(--sdcard "$sdcard" --no-audio --uart1-device "$tmpdir/emulator" --uart1-baud "$baud")
 title="agon-serial-bios UART1 (${baud} baud, 8N1)"
@@ -110,8 +164,11 @@ pu baudrate         $baud
 pu bits             8
 pu parity           N
 pu stopbits         1
+pu updir            $root/bin
 EOF
-minicom_cmd=(env HOME="$tmpdir/minicom-home" minicom --device "$tmpdir/terminal" --baudrate "$baud" -8)
+minicom_cmd=(bash -c 'stty size > "$1"; shift; exec "$@"' minicom-wrapper \
+  "$tmpdir/screen-size" env HOME="$tmpdir/minicom-home" minicom \
+  --device "$tmpdir/terminal" --baudrate "$baud" -8)
 launch_terminal() {
   case "$terminal_name" in
     st)
@@ -139,6 +196,15 @@ else
   emulator_pid=$!
   sleep 0.5
   if [[ -n $xmodem_file ]]; then
+    for _ in {1..300}; do
+      [[ -e $tmpdir/bios-ready ]] && break
+      if ! kill -0 "$emulator_pid" 2>/dev/null; then
+        echo "Emulator exited before BIOS requested XMODEM" >&2
+        exit 1
+      fi
+      sleep 0.1
+    done
+    [[ -e $tmpdir/bios-ready ]] || { echo "Timed out waiting for BIOS XMODEM prompt" >&2; exit 1; }
     echo "Sending $xmodem_file with XMODEM..."
     sx -X -b -- "$xmodem_file" < "$tmpdir/terminal" > "$tmpdir/terminal"
     echo "XMODEM upload finished; launching Minicom."

@@ -27,10 +27,6 @@
 	.set BIOS_STATUS_VECTOR_NOT_FOUND, 3
 
 	.section .bios,"ax",@progbits
-	.org 0x000000
-bios_reset_stub:
-	jp.lil bios_soft_start
-
 	.org 0xE000
 
 ;; MOS enters here after loading the BIOS into internal SRAM.

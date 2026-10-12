@@ -17,8 +17,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class Harness:
-    def __init__(self, emulator: str, firmware: list[str], timeout: float):
+    def __init__(self, emulator: str, firmware: list[str], timeout: float, *, ansi_bridge: bool = False):
         self.timeout = timeout
+        self.bridge_process: subprocess.Popen[str] | None = None
+        self.bridge_directory: Path | None = None
+        self.bridge_size_file: Path | None = None
         self.output = bytearray()
         self.chunks: list[tuple[int, bytes, float]] = []
         self.to_emulator = bytearray()
@@ -27,12 +30,36 @@ class Harness:
         self.sx_stderr = None
         self.next_tx_time = 0.0
         self.tx_interval = 0.0015
-        self.emulator_master, emulator_slave = pty.openpty()
+        if ansi_bridge:
+            self.bridge_directory = Path(subprocess.check_output(["mktemp", "-d"], text=True).strip())
+            emulator_link = self.bridge_directory / "emulator"
+            terminal_link = self.bridge_directory / "terminal"
+            self.bridge_size_file = self.bridge_directory / "screen-size"
+            self.bridge_size_file.write_text("24 80\\n")
+            self.bridge_process = subprocess.Popen(
+                [sys.executable, str(ROOT / "tools/ansi_uart_bridge.py"),
+                 "--emulator-link", str(emulator_link),
+                 "--terminal-link", str(terminal_link),
+                 "--size-file", str(self.bridge_size_file)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            ready_line = self.bridge_process.stdout.readline() if self.bridge_process.stdout else ""
+            if ready_line.strip() != "UART bridge ready":
+                self.bridge_process.terminate()
+                self.bridge_process.wait(timeout=2)
+                subprocess.run(["rm", "-rf", "--", str(self.bridge_directory)], check=False)
+                raise RuntimeError(f"UART bridge failed to start: {ready_line!r}")
+            self.emulator_path = str(emulator_link)
+            self.emulator_master = os.open(terminal_link, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+            emulator_slave = None
+        else:
+            self.emulator_master, emulator_slave = pty.openpty()
+            tty.setraw(emulator_slave)
+            self.emulator_path = os.ttyname(emulator_slave)
+            os.set_blocking(self.emulator_master, False)
         self.sx_master, self.sx_slave = pty.openpty()
-        tty.setraw(emulator_slave)
-        tty.setraw(self.sx_slave)
-        self.emulator_path = os.ttyname(emulator_slave)
-        os.set_blocking(self.emulator_master, False)
+        if not ansi_bridge:
+            tty.setraw(self.sx_slave)
         os.set_blocking(self.sx_master, False)
         command = [emulator, "--sdcard", str(ROOT / "sdcard"), "--no-audio",
                    "--uart1-device", self.emulator_path, "--uart1-baud", "115200"]
@@ -44,7 +71,8 @@ class Harness:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        os.close(emulator_slave)
+        if emulator_slave is not None:
+            os.close(emulator_slave)
 
     def pump(self, wait: float = 0.01) -> None:
         import select
@@ -184,6 +212,19 @@ class Harness:
                 os.close(fd)
             except OSError:
                 pass
+        if self.bridge_process is not None:
+            self.bridge_process.terminate()
+            try:
+                self.bridge_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.bridge_process.kill()
+                self.bridge_process.wait()
+            if self.bridge_process.stdout:
+                self.bridge_process.stdout.close()
+            if self.bridge_process.stderr:
+                self.bridge_process.stderr.close()
+        if self.bridge_directory is not None:
+            subprocess.run(["rm", "-rf", "--", str(self.bridge_directory)], check=False)
 
 
 def main() -> int:

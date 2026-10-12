@@ -14,13 +14,6 @@ mkdir -p bin obj
 "$agondev_bin/ez80-none-elf-ld" -T bios/EZ80BIOS.ld \
   --oformat binary -Map bin/EZ80BIOS.map \
   -o obj/EZ80BIOS.full.bin obj/EZ80BIOS.o
-# Keep the low reset vector separate from the 8 KiB internal-SRAM BIOS image.
-dd if=obj/EZ80BIOS.full.bin of=bin/bios_reset_stub.bin \
-  bs=1 skip=0 count=8 status=none
-[[ $(wc -c < bin/bios_reset_stub.bin) -eq 8 ]] || {
-  echo "bios_reset_stub.bin must contain exactly 8 bytes" >&2
-  exit 1
-}
 # The BIOS image occupies 0xE000..0xFFFF in the full address image.
 dd if=obj/EZ80BIOS.full.bin of=bin/EZ80BIOS.bin \
   bs=1 skip=$((0xE000)) count=$((0x2000)) status=none
@@ -42,6 +35,18 @@ dd if=obj/helloserial.full.bin of=bin/helloserial.bin \
 }
 
 "$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
+  -o obj/xwasd.o examples/xwasd.s
+"$agondev_bin/ez80-none-elf-ld" -T examples/xwasd.ld \
+  --oformat binary -Map bin/xwasd.map \
+  -o obj/xwasd.full.bin obj/EZ80BIOS.o obj/xwasd.o
+dd if=obj/xwasd.full.bin of=bin/xwasd.bin \
+  bs=1 skip=$((0x10000)) status=none
+[[ -s bin/xwasd.bin ]] || {
+  echo "xwasd.bin was not generated" >&2
+  exit 1
+}
+
+"$agondev_bin/ez80-none-elf-as" -march=ez80+adl \
   -o obj/testbios.o test/testbios.s
 "$agondev_bin/ez80-none-elf-ld" -T test/testbios.ld \
   --oformat binary -Map bin/testbios.map \
@@ -58,9 +63,9 @@ make OBJS=obj/main.o
 sdcard="$project_root/sdcard"
 mkdir -p "$sdcard"
 cp bin/EZ80BIOS.bin "$sdcard/EZ80BIOS.bin"
-cp bin/bios_reset_stub.bin "$sdcard/bios_reset_stub.bin"
 cp bin/biosloader.bin "$sdcard/biosloader.bin"
 cp bin/helloserial.bin "$sdcard/helloserial.bin"
+cp bin/xwasd.bin "$sdcard/xwasd.bin"
 printf 'LOAD BIOSLOADER.BIN\nRUN\n' > "$sdcard/autoexec.txt"
 
 echo "Built BIOS, tests, and example; copied files to $sdcard"
