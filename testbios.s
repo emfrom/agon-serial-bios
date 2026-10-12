@@ -219,6 +219,7 @@ test_nread_128_check:
 	ld hl, 0x123456
 	push hl
 	ld hl, test_xmodem_buffer
+	ld bc, 256
 	ld a, BIOS_OP_XMODEM_RX
 	rst 0x10
 	ld (test_xmodem_status), a
@@ -245,11 +246,35 @@ test_nread_128_check:
 	ld a, (ix+0)
 	cp 'X'
 	jp nz, test_fail_xmodem_data
-	ld ix, test_xmodem_buffer+258
+	ld ix, test_xmodem_buffer+256
 	ld a, (ix+0)
 	cp 0x5A
 	jp nz, test_fail_xmodem_data
 	ld hl, msg_xmodem_pass
+	call test_puts
+
+;; A 128-byte maximum accepts one frame but rejects the second without writes.
+	ld hl, msg_xmodem_limit_ready
+	call test_puts
+	ld hl, test_xmodem_small_buffer
+	ld bc, 128
+	ld a, BIOS_OP_XMODEM_RX
+	rst 0x10
+	cp 2
+	jp nz, test_fail_xmodem_limit_status
+	ld ix, test_xmodem_small_buffer
+	ld a, (ix+0)
+	cp 'X'
+	jp nz, test_fail_xmodem_limit_data
+	ld ix, test_xmodem_small_buffer+127
+	ld a, (ix+0)
+	cp 'X'
+	jp nz, test_fail_xmodem_limit_data
+	ld ix, test_xmodem_small_buffer+128
+	ld a, (ix+0)
+	cp 0x5A
+	jp nz, test_fail_xmodem_limit_data
+	ld hl, msg_xmodem_limit_pass
 	call test_puts
 
 ;; Fill all 255 TX ring slots with interrupts masked, then verify full status.
@@ -308,6 +333,14 @@ test_fail_tx_not_full:
 	ld hl, msg_tx_not_full_fail
 	call test_puts
 	jp test_fail
+test_fail_xmodem_limit_status:
+	ld hl, msg_xmodem_limit_status_fail
+	call test_puts
+	jp test_fail
+test_fail_xmodem_limit_data:
+	ld hl, msg_xmodem_limit_data_fail
+	call test_puts
+	jp test_fail
 test_fail_xmodem_status:
 	ld hl, msg_xmodem_status_fail
 	call test_puts
@@ -350,9 +383,13 @@ msg_nread_three_pass:  .asciz "PASS:NREAD3\r\n"
 msg_nread_128_ready:   .asciz "TESTBIOS:NREAD128_READY\r\n"
 msg_nread_128_pass:    .asciz "PASS:NREAD128\r\n"
 msg_xmodem_ready:      .asciz "TESTBIOS:XMODEM_READY\r\n"
+msg_xmodem_limit_ready:.asciz "TESTBIOS:XMODEM_LIMIT_READY\r\n"
 msg_xmodem_pass:       .asciz "PASS:XMODEM_RX\r\n"
 msg_xmodem_status_fail:.asciz "FAIL:XMODEM_STATUS\r\n"
 msg_xmodem_data_fail:  .asciz "FAIL:XMODEM_DATA\r\n"
+msg_xmodem_limit_pass: .asciz "PASS:XMODEM_MAX_SIZE\r\n"
+msg_xmodem_limit_status_fail:.asciz "FAIL:XMODEM_LIMIT_STATUS\r\n"
+msg_xmodem_limit_data_fail:.asciz "FAIL:XMODEM_LIMIT_DATA\r\n"
 msg_tx_queue_begin:    .asciz "TESTBIOS:TX_QUEUE_BEGIN\r\n"
 msg_tx_queue_pass:     .asciz "PASS:TX_PUT_FULL\r\n"
 msg_tx_early_fail:     .asciz "FAIL:TX_PUT_EARLY\r\n"
@@ -370,3 +407,4 @@ test_nread_one:        .db 0
 test_nread_three:     .ds 3, 0
 test_nread_128:       .ds 128, 0
 test_xmodem_buffer:   .ds 260, 0x5A
+test_xmodem_small_buffer: .ds 129, 0x5A

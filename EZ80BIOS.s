@@ -184,6 +184,7 @@ __bios_copy_memory_message:
 	ld hl, bios_xmodem_loading_message
 	call io_puts
 	ld hl, EXTERNAL_RAM_START_ADDRESS
+	ld bc, XMODEM_BOOT_MAX_SIZE
 	call io_xmodem_rx
 	or a
 	jr nz, __io_xmodem_failed
@@ -604,6 +605,7 @@ bios_rs_overflow: .db 0
 	.org 0xFC10
 bios_uptime_10ms:           .ds 3, 0
 bios_xmodem_wp:             .ds 3, 0
+bios_xmodem_remaining:      .ds 3, 0
 bios_xmodem_retry_armed:    .db 0
 bios_xmodem_start_flag:     .db 0
 bios_timer0_saved_vector:   .ds 2, 0
@@ -617,7 +619,7 @@ bios_xmodem_data_count:     .db 0
 bios_xmodem_byte:           .db 0
 bios_xmodem_received_crc_hi: .db 0
 bios_xmodem_received_crc_lo: .db 0
-	.org 0xFC26
+	.org 0xFC29
 bios_nread_dest:             .ds 3, 0
 
 	.org 0xFD00
@@ -672,7 +674,8 @@ bios_stack:
 	.set EXTERNAL_RAM_FIRST_PAGE, 0x00
 	.set EXTERNAL_RAM_LAST_PAGE, 0x07
 	.set EXTERNAL_RAM_START_ADDRESS, 0x010000
-	.set XMODEM_LAST_SAFE_FRAME_START, 0x07FF7E
+	.set XMODEM_LAST_SAFE_FRAME_START, 0x07FF80
+	.set XMODEM_BOOT_MAX_SIZE, 0x070000
 	.set BIOS_RST_VECTOR_BYTES, 0x40
 	.set BIOS_IVT_BYTES, 0x68
 	.set BIOS_IVT_PAGE, 0xFB

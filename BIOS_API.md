@@ -37,7 +37,7 @@ for client code.
 | `02h` | `PEEK` | — | Nonblocking RX-ring peek; byte in `A`, carry set if empty |
 | `03h` | `NREAD` | `HL` = destination, `BC` = byte count | Blocking exact-length binary input |
 | `04h` | `PUTS` | `HL` = NUL-terminated string | Blocking UART1 string output |
-| `05h` | `XMODEM_RX` | `HL` = destination | XMODEM-CRC receive; status in `A` |
+| `05h` | `XMODEM_RX` | `HL` = destination, `BC` = maximum payload size | XMODEM-CRC receive; status in `A` |
 | `06h` | `TX_PUT` | `C` = byte | Nonblocking TX enqueue; carry set if full |
 | `07h` | `RX_GET` | — | Nonblocking RX dequeue; byte in `A`, carry set if empty |
 | `08h` | `WAIT` | — | Busy-wait for approximately 50 ms |
@@ -82,17 +82,24 @@ string must remain readable for the duration of the call.
 
 ### `05h` — `XMODEM_RX`
 
-Pass a destination in `HL` within external SRAM (`0x010000` through
-`0x07FF7E`). Receives 128-byte XMODEM-CRC frames. Returns `A = 0` on successful
-EOT, `A = 1` on cancellation, and `A = 2` on an invalid destination or receive
-error. The caller's `BC`, `DE`, and `HL` are preserved. The BIOS does not preserve `IX` or `IY`;
-callers must save them if needed. The receive operation temporarily uses PRT0 for handshake and FIFO service and restores the
-previous PRT0 vector before returning. CRC is CRC-16/XMODEM (polynomial
-`0x1021`, initial value `0x0000`, MSB first, no final XOR).
+Pass the destination in `HL` and the maximum writable payload size in bytes in
+`BC`. The destination must be in external SRAM (`0x010000` through `0x07FF80`),
+and the capacity must allow at least one 128-byte frame. The receiver accepts a
+frame only when the entire 128-byte payload fits both the remaining capacity
+and physical SRAM; otherwise it sends CAN and returns an error without writing
+that frame. `BC` is preserved. Returns `A = 0` on successful EOT, `A = 1` on
+cancellation, and `A = 2` on an invalid destination, insufficient capacity,
+or receive error. `DE` and `HL` are preserved. The BIOS does not preserve `IX` or
+`IY`; callers must save them if needed. The receive operation temporarily uses
+PRT0 for handshake and FIFO service and restores the previous PRT0 vector before
+returning. CRC is CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`,
+MSB first, no final XOR).
 
-The transfer stores complete 128-byte blocks, including any final-block
-padding. The exclusive end pointer and other receiver state are BIOS-internal,
-not part of this public interface.
+Only frame payload bytes are written; CRC bytes are checked but not stored. Each
+accepted frame writes 128 bytes, including final-frame padding, so the total
+written size never exceeds `BC` but may be larger than the sender's original
+file length. The exclusive end pointer and other receiver state are
+BIOS-internal, not part of this public interface.
 
 ### `06h` — `TX_PUT`
 

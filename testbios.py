@@ -121,7 +121,7 @@ class Harness:
         self.to_emulator.clear()
         self.next_tx_time = time.monotonic()
 
-    def finish_sx(self) -> None:
+    def finish_sx(self, expect_failure: bool = False) -> None:
         assert self.sx_process is not None
         deadline = time.monotonic() + self.timeout
         while self.sx_process.poll() is None or self.to_emulator:
@@ -131,10 +131,11 @@ class Harness:
             self.pump(0.005)
         status = self.sx_process.wait()
         self.pump(0.1)
-        if status != 0:
+        if (status != 0) != expect_failure:
             self.sx_stderr.seek(0)
             detail = self.sx_stderr.read().decode(errors="replace")
-            raise RuntimeError(f"sx exited with {status}: {detail}")
+            expected = "failure" if expect_failure else "success"
+            raise RuntimeError(f"sx exited with {status}, expected {expected}: {detail}")
         self.sx_stderr.close()
         self.sx_stderr = None
         self.sx_process = None
@@ -264,6 +265,11 @@ def main() -> int:
             harness.start_sx(xmodem_payload)
             harness.finish_sx()
             harness.wait_for(b"PASS:XMODEM_RX")
+
+            harness.wait_for(b"TESTBIOS:XMODEM_LIMIT_READY")
+            harness.start_sx(xmodem_payload)
+            harness.finish_sx(expect_failure=True)
+            harness.wait_for(b"PASS:XMODEM_MAX_SIZE")
 
             harness.wait_for(b"TESTBIOS:TX_QUEUE_BEGIN")
             harness.wait_for(b"PASS:TX_PUT_FULL\r\n")

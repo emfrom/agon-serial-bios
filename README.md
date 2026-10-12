@@ -156,7 +156,7 @@ Operation definitions and register contracts are documented in [`BIOS_API.md`](B
 | `BIOS_OP_PEEK` | — | byte in `A`; carry set if RX ring is empty |
 | `BIOS_OP_NREAD` | `HL` = destination, `BC` = byte count | blocking binary read |
 | `BIOS_OP_PUTS` | `HL` = NUL-terminated string | blocking string output |
-| `BIOS_OP_XMODEM_RX` | `HL` = destination in external SRAM | status in `A` (`0` success, nonzero error) |
+| `BIOS_OP_XMODEM_RX` | `HL` = destination, `BC` = maximum size in bytes | status in `A` (`0` success, nonzero error) |
 | `BIOS_OP_TX_PUT` | `C` = byte | carry set if TX ring is full |
 | `BIOS_OP_RX_GET` | — | byte in `A`; carry set if RX ring is empty |
 | `BIOS_OP_WAIT` | — | busy-wait delay |
@@ -181,8 +181,10 @@ initial program load and the suite's XMODEM receive test.
 ## XMODEM-CRC receive
 
 At startup the BIOS prints `Waiting for XMODEM at 0x010000` and internally
-calls its receiver with `HL=0x010000`. Client programs can invoke the same
-operation through `BIOS_OP_XMODEM_RX`. The pre-handshake output intentionally
+calls its receiver with `HL=0x010000` and `BC=0x070000`, the remaining external
+RAM capacity. Client programs can invoke the same operation through
+`BIOS_OP_XMODEM_RX`, passing their destination in `HL` and maximum writable size
+in `BC`. The pre-handshake output intentionally
 avoids an uppercase `C`, which an XMODEM sender interprets as a CRC request. The
 routine receives 128-byte XMODEM frames through the UART1 RX ring. PRT0 ticks
 every 10 ms, increments the 24-bit `bios_uptime_10ms` value, and drains residual
@@ -194,17 +196,21 @@ restores the saved vector and tail-jumps to the normal timer ISR. An atomic flag
 byte gates the receiver until the start control byte is queued. The API restores
 the saved vector again before returning.
 
-Each frame's payload and two CRC bytes are written to external SRAM, checked
-with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`, non-reflected,
-no final XOR; high CRC byte first), and the write pointer is moved back over the
-CRC. Bad frames receive NAK; valid frames receive ACK, including retransmitted
-duplicates. EOT is ACKed; the BIOS prints `Load complete` and prompts `Press R to run`.
+Each frame's payload is written to external SRAM and its two CRC bytes are
+checked with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`,
+non-reflected, no final XOR; high CRC byte first); CRC bytes are not stored. A
+frame is accepted only if all 128 payload bytes fit within both the caller's
+remaining capacity and external SRAM. If not, the receiver sends CAN and returns
+an error without writing that frame. Bad CRC frames receive NAK; valid frames
+receive ACK, including retransmitted duplicates. EOT is ACKed; the BIOS prints
+`Load complete` and prompts `Press R to run`.
 It ignores other input, clears `A` after `R`/`r`, then jumps to `0x010000`.
 
 Reads block on UART/timer interrupts; there are no receive timeouts. XMODEM
 transmits complete 128-byte blocks and does not include the exact file length, so
-any final-block padding is also present in memory. Two bytes are reserved for
-the final CRC, limiting a transfer to 3583 blocks (458,624 payload bytes).
+any final-block padding is also present in memory. The receiver can store up to
+3584 blocks (458,752 payload bytes) from the startup destination; client
+capacities must account for whole frames.
 
 UART1 RTS is active-low. The BIOS routes PC0–PC2 to UART1 and uses hysteresis:
 it deasserts RTS below 33 free RX-ring slots and reasserts it only at 133 free
@@ -219,10 +225,10 @@ bios_entry (hard initializer)
 └─ bios_soft_start
    ├─ reset stack; restore RST stubs and the peripheral IVT defaults
    ├─ initialize UART1/PRT0 and print startup messages
-   └─ RST 10h / BIOS_OP_XMODEM_RX (HL=0x010000)
+   └─ io_xmodem_rx (HL=0x010000, BC=0x070000)
       ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
       ├─ BIOS_OP_GETCHAR (HALT while rs is empty)
-      ├─ receive 128-byte payload and two CRC bytes
+      ├─ receive complete 128-byte frames within BC and physical SRAM bounds
       ├─ CRC-16/XMODEM check ──> ACK or NAK
       └─ EOT ──> print completion and Press R prompt
          └─ wait for R/r, zero A, jump to 0x010000

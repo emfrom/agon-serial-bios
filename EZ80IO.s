@@ -274,8 +274,8 @@ __io_xmodem_flag_ready:
 	pop af
 	ret
 
-;; Receive XMODEM-CRC frames into external RAM. Each accepted frame stores
-;; payload+CRC; after CRC validation the two-byte CRC is removed from the WP.
+;; Receive XMODEM-CRC frames into external RAM. BC is the maximum payload
+;; capacity; only complete 128-byte payload frames are written, never the CRC.
 ;; A=0 on EOT, nonzero on cancellation, invalid destination, or insufficient RAM.
 io_xmodem_rx:
 	;; IX/IY are caller-saved by the BIOS API; do not save/restore them here.
@@ -283,12 +283,18 @@ io_xmodem_rx:
 	push de
 	push hl
 	ld (bios_xmodem_wp), hl
+	ld (bios_xmodem_remaining), bc
 	ld de, EXTERNAL_RAM_START_ADDRESS
 	or a
 	sbc hl, de
 	jp c, __io_xmodem_rx_bad_start
 	ld hl, XMODEM_LAST_SAFE_FRAME_START
 	ld de, (bios_xmodem_wp)
+	or a
+	sbc hl, de
+	jp c, __io_xmodem_rx_bad_start
+	ld hl, (bios_xmodem_remaining)
+	ld de, XMODEM_BLOCK_SIZE
 	or a
 	sbc hl, de
 	jp c, __io_xmodem_rx_bad_start
@@ -357,12 +363,18 @@ __io_xmodem_packet:
 	jr __io_xmodem_bad_header
 
 __io_xmodem_expected_block:
-	;; A 130-byte frame must fit in external SRAM, including both CRC bytes.
+	;; The whole payload frame must fit both physical RAM and caller capacity.
 	ld de, (bios_xmodem_wp)
 	ld hl, XMODEM_LAST_SAFE_FRAME_START
 	or a
 	sbc hl, de
 	jp c, __io_xmodem_abort
+	ld hl, (bios_xmodem_remaining)
+	ld de, XMODEM_BLOCK_SIZE
+	or a
+	sbc hl, de
+	jp c, __io_xmodem_abort
+	ld de, (bios_xmodem_wp)
 	ld a, 1
 	ld (bios_xmodem_store), a
 	jr __io_xmodem_read_data
@@ -394,22 +406,8 @@ __io_xmodem_skip_data_store:
 
 	call io_getchar
 	ld (bios_xmodem_received_crc_hi), a
-	ld a, (bios_xmodem_store)
-	or a
-	jr z, __io_xmodem_skip_crc_hi_store
-	ld a, (bios_xmodem_received_crc_hi)
-	ld (de), a
-	inc de
-__io_xmodem_skip_crc_hi_store:
 	call io_getchar
 	ld (bios_xmodem_received_crc_lo), a
-	ld a, (bios_xmodem_store)
-	or a
-	jr z, __io_xmodem_skip_crc_lo_store
-	ld a, (bios_xmodem_received_crc_lo)
-	ld (de), a
-	inc de
-__io_xmodem_skip_crc_lo_store:
 
 	ld a, (bios_xmodem_header_ok)
 	or a
@@ -424,9 +422,12 @@ __io_xmodem_skip_crc_lo_store:
 	ld a, (bios_xmodem_store)
 	or a
 	jr z, __io_xmodem_ack
-	dec de
-	dec de
 	ld (bios_xmodem_wp), de
+	ld hl, (bios_xmodem_remaining)
+	ld de, XMODEM_BLOCK_SIZE
+	or a
+	sbc hl, de
+	ld (bios_xmodem_remaining), hl
 	ld a, (bios_xmodem_expected)
 	inc a
 	ld (bios_xmodem_expected), a
