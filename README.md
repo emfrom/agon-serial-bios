@@ -162,9 +162,19 @@ Operation definitions and register contracts are documented in [`BIOS_API.md`](B
 | `BIOS_OP_WAIT` | — | busy-wait delay |
 | `BIOS_OP_HALT` | — | does not return; enters the idle loop |
 | `BIOS_OP_CALL_HL` | `HL` = function pointer | tail-calls the function through the RST frame |
+| `BIOS_OP_VECTOR_ADD` | `B` = IVECT, `HL` = handler | register a PRT0 extension |
+| `BIOS_OP_VECTOR_REMOVE` | `B` = IVECT, `HL` = handler | unregister a PRT0 extension |
 
 `HL` and `DE` carry addresses, and `BC` carries counts. Unless a result is
 specified above, callers must not depend on register or flag preservation.
+Vector operations currently support PRT0 (`IVECT=0x0A`) with eight slots;
+duplicate handler addresses are allowed and one removal clears all copies.
+Occupied slots run in reverse slot order. Handlers may use the registers
+saved by the ISR (`AF`, `BC`, `DE`, `HL`, `IX`, `IY`) and must end with
+`pop hl; jp (hl)` to
+chain to the next handler or return to the ISR. They must not execute `EI` or
+terminate with `RET` / `RETI`; the BIOS completes the interrupt. See
+`BIOS_API.md` for statuses and details.
 RST `00h` is the non-returning soft restart; RST `08h`, `18h`, `20h`, `28h`,
 `30h`, and `38h` enter the idle loop. Interrupt handlers preserve the
 interrupted register set.
@@ -176,7 +186,9 @@ Build it with `./build.sh`; the result is `bin/testbios.bin`. Run the automated
 emulator test with `python3 testbios.py`. The harness requires `sx` (lrzsz) and
 `fab-agon-emulator` on `PATH`; pass `--emulator`, `--vdp`, and/or `--mos` when
 the emulator or its firmware is installed elsewhere. It uses `sx` for both the
-initial program load and the suite's XMODEM receive test.
+initial program load and the suite's XMODEM receive test. It also verifies
+eight chained PRT0 slots, duplicate registration, full-table rejection,
+remove-all behavior, and stopping callbacks after removal.
 
 ## XMODEM-CRC receive
 
@@ -188,13 +200,12 @@ in `BC`. The pre-handshake output intentionally
 avoids an uppercase `C`, which an XMODEM sender interprets as a CRC request. The
 routine receives 128-byte XMODEM frames through the UART1 RX ring. PRT0 ticks
 every 10 ms, increments the 24-bit `bios_uptime_10ms` value, and drains residual
-hardware RX FIFO bytes into the ring. During the handshake, the routine saves
-the current PRT0 vector and
-temporarily installs `__io_xmodem_start`. That handler discards unrelated RX
-bytes, leaves SOH/CAN/EOT queued, resends `C` every 256 ticks (2,560 ms), then
-restores the saved vector and tail-jumps to the normal timer ISR. An atomic flag
-byte gates the receiver until the start control byte is queued. The API restores
-the saved vector again before returning.
+hardware RX FIFO bytes into the ring. During the handshake, the BIOS registers
+`__io_xmodem_start` through `VECTOR_ADD`, without replacing the IVT entry. The
+hook discards unrelated RX bytes, leaves SOH/CAN/EOT queued, and resends `C`
+every 256 ticks (2,560 ms). It unregisters itself when a start control byte is
+detected; the receiver also removes it on every exit. Other registered handlers
+remain in the chain.
 
 Each frame's payload is written to external SRAM and its two CRC bytes are
 checked with CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`,
@@ -226,7 +237,7 @@ bios_entry (hard initializer)
    ├─ reset stack; restore RST stubs and the peripheral IVT defaults
    ├─ initialize UART1/PRT0 and print startup messages
    └─ io_xmodem_rx (HL=0x010000, BC=0x070000)
-      ├─ __io_xmodem_start (temporary PRT0 vector; resend 'C', peek RX ring)
+      ├─ __io_xmodem_start (registered PRT0 extension; resend 'C', peek RX ring)
       ├─ BIOS_OP_GETCHAR (HALT while rs is empty)
       ├─ receive complete 128-byte frames within BC and physical SRAM bounds
       ├─ CRC-16/XMODEM check ──> ACK or NAK
@@ -239,11 +250,11 @@ __bios_uart1_isr (UART1 vector 0x1A)
 ├─ RX causes ──> drain UART FIFO into rs, update RTS
 └─ TX-empty ──> fill UART FIFO from ts
 
-__io_xmodem_start (temporary PRT0 vector)
+__io_xmodem_start (registered PRT0 extension)
 ├─ discard unrelated bytes; leave SOH/CAN/EOT queued
 ├─ gate receiver with an atomic start-flag byte
 ├─ resend 'C' on the 256-tick schedule
-└─ restore saved vector, then jump to __bios_timer0_isr
+└─ pop HL / JP (HL) to the next extension or timer ISR
 
 __bios_timer0_isr (PRT0 vector 0x0A; 10 ms)
 ├─ increment bios_uptime_10ms

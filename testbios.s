@@ -13,6 +13,9 @@
 	.set BIOS_OP_WAIT, 0x08
 	.set BIOS_OP_HALT, 0x09
 	.set BIOS_OP_CALL_HL, 0x0A
+	.set BIOS_OP_VECTOR_ADD, 0x0B
+	.set BIOS_OP_VECTOR_REMOVE, 0x0C
+	.set PRT0_IVECT, 0x0A
 
 	.section .testbios,"ax",@progbits
 
@@ -81,6 +84,166 @@ testbios:
 	cp 0xFF
 	jp nz, test_fail
 	ld hl, msg_badop_pass
+	call test_puts
+
+;; Eight PRT0 slots accept duplicates; removal clears every matching slot.
+	ld b, 0x1A                    ;; UART1 is not supported yet.
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	cp 1
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_2
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_3
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_4
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_5
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_6
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_7
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_8
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	cp 2
+	jp nz, test_fail
+	ld a, BIOS_OP_WAIT
+	rst 0x10
+	ld a, (test_timer_count_1)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_2)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_3)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_4)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_5)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_6)
+	or a
+	jp z, test_fail
+	ld a, (test_timer_count_7)
+	or a
+	jp z, test_fail
+
+;; Removing a duplicated pointer clears both slots; the remaining chain runs.
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld a, (test_timer_count_1)
+	ld (test_timer_snapshot_1), a
+	ld a, (test_timer_count_3)
+	ld (test_timer_snapshot_3), a
+	ld a, BIOS_OP_WAIT
+	rst 0x10
+	ld a, (test_timer_count_1)
+	ld hl, test_timer_snapshot_1
+	cp (hl)
+	jp nz, test_fail
+	ld a, (test_timer_count_3)
+	ld hl, test_timer_snapshot_3
+	cp (hl)
+	jp z, test_fail
+
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_2
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_3
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_4
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_5
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_6
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_7
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_8
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	cp 3
+	jp nz, test_fail
+	ld a, (test_timer_count_3)
+	ld (test_timer_snapshot_3), a
+	ld a, BIOS_OP_WAIT
+	rst 0x10
+	ld a, (test_timer_count_3)
+	ld hl, test_timer_snapshot_3
+	cp (hl)
+	jp nz, test_fail
+	ld hl, msg_vector_pass
 	call test_puts
 
 ;; Empty-ring behavior and zero-length NREAD must not consume input.
@@ -213,7 +376,15 @@ test_nread_128_check:
 	ld hl, msg_nread_128_pass
 	call test_puts
 
-;; XMODEM_RX receives two frames through the actual sx sender in testbios.py.
+;; XMODEM_RX receives two frames while a client PRT0 extension remains active.
+	xor a
+	ld (test_timer_count_1), a
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jp nz, test_fail
 	ld hl, msg_xmodem_ready
 	call test_puts
 	ld hl, 0x123456
@@ -250,6 +421,15 @@ test_nread_128_check:
 	ld a, (ix+0)
 	cp 0x5A
 	jp nz, test_fail_xmodem_data
+	ld a, (test_timer_count_1)
+	or a
+	jp z, test_fail
+	ld b, PRT0_IVECT
+	ld hl, test_timer_handler_1
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
+	or a
+	jp nz, test_fail
 	ld hl, msg_xmodem_pass
 	call test_puts
 
@@ -314,6 +494,52 @@ test_callback_second:
 	ld a, 0xA5
 	ret
 
+test_timer_handler_1:
+	ld a, (test_timer_count_1)
+	inc a
+	ld (test_timer_count_1), a
+	pop hl
+	jp (hl)
+test_timer_handler_2:
+	ld a, (test_timer_count_2)
+	inc a
+	ld (test_timer_count_2), a
+	pop hl
+	jp (hl)
+test_timer_handler_3:
+	ld a, (test_timer_count_3)
+	inc a
+	ld (test_timer_count_3), a
+	pop hl
+	jp (hl)
+test_timer_handler_4:
+	ld a, (test_timer_count_4)
+	inc a
+	ld (test_timer_count_4), a
+	pop hl
+	jp (hl)
+test_timer_handler_5:
+	ld a, (test_timer_count_5)
+	inc a
+	ld (test_timer_count_5), a
+	pop hl
+	jp (hl)
+test_timer_handler_6:
+	ld a, (test_timer_count_6)
+	inc a
+	ld (test_timer_count_6), a
+	pop hl
+	jp (hl)
+test_timer_handler_7:
+	ld a, (test_timer_count_7)
+	inc a
+	ld (test_timer_count_7), a
+	pop hl
+	jp (hl)
+test_timer_handler_8:
+	pop hl
+	jp (hl)
+
 test_puts:
 	ld a, BIOS_OP_PUTS
 	rst 0x10
@@ -368,6 +594,7 @@ msg_call_hl_pass:      .asciz "PASS:CALL_HL\r\n"
 msg_call_hl_second_pass:.asciz "PASS:CALL_HL_SECOND\r\n"
 msg_badop_pass:        .asciz "PASS:BAD_OPERATION\r\n"
 msg_empty_pass:        .asciz "PASS:EMPTY_AND_ZERO_NREAD\r\n"
+msg_vector_pass:       .asciz "PASS:VECTOR_EXTENSIONS\r\n"
 msg_getchar_ready:     .asciz "TESTBIOS:GETCHAR_READY\r\n"
 msg_getchar_pass:      .asciz "PASS:GETCHAR\r\n"
 msg_getchar_second_ready:.asciz "TESTBIOS:GETCHAR2_READY\r\n"
@@ -395,6 +622,7 @@ msg_tx_queue_pass:     .asciz "PASS:TX_PUT_FULL\r\n"
 msg_tx_early_fail:     .asciz "FAIL:TX_PUT_EARLY\r\n"
 msg_tx_not_full_fail:  .asciz "FAIL:TX_PUT_NOT_FULL\r\n"
 msg_stack_fail:        .asciz "FAIL:XMODEM_STACK\r\n"
+
 msg_all_pass:          .asciz "TESTBIOS:ALL_PASS\r\n"
 msg_halt_returned:     .asciz "FAIL:HALT_RETURNED\r\n"
 msg_fail:              .asciz "FAIL:ASSERTION\r\n"
@@ -402,6 +630,15 @@ msg_crlf:              .asciz "\r\n"
 
 	.align 1
 test_peek_seen:        .db 0
+test_timer_count_1:    .db 0
+test_timer_count_2:    .db 0
+test_timer_count_3:    .db 0
+test_timer_count_4:    .db 0
+test_timer_count_5:    .db 0
+test_timer_count_6:    .db 0
+test_timer_count_7:    .db 0
+test_timer_snapshot_1: .db 0
+test_timer_snapshot_3: .db 0
 test_xmodem_status:    .db 0
 test_nread_one:        .db 0
 test_nread_three:     .ds 3, 0

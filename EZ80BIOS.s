@@ -18,8 +18,13 @@
 	.set BIOS_OP_WAIT, 0x08
 	.set BIOS_OP_HALT, 0x09
 	.set BIOS_OP_CALL_HL, 0x0A
-	.set BIOS_OP_COUNT, 0x0B
+	.set BIOS_OP_VECTOR_ADD, 0x0B
+	.set BIOS_OP_VECTOR_REMOVE, 0x0C
+	.set BIOS_OP_COUNT, 0x0D
 	.set BIOS_STATUS_BAD_OPERATION, 0xFF
+	.set BIOS_STATUS_VECTOR_UNSUPPORTED, 1
+	.set BIOS_STATUS_VECTOR_FULL, 2
+	.set BIOS_STATUS_VECTOR_NOT_FOUND, 3
 
 	.section .bios,"ax",@progbits
 	.org 0x000000
@@ -142,6 +147,18 @@ bios_soft_start:
 	ld (bios_ts_head), a
 	ld (bios_ts_tail), a
 	ld (bios_rs_overflow), a
+	ld (bios_timer0_extensions_present), a
+	ld (bios_xmodem_start_flag), a
+	ld (bios_timer0_isr_active), a
+	ld hl, BIOS_ZERO
+	ld ix, bios_timer0_extensions
+	ld b, BIOS_TIMER0_EXTENSION_SLOTS
+__bios_clear_timer0_extensions:
+	ld (ix+0), hl
+	inc ix
+	inc ix
+	inc ix
+	djnz __bios_clear_timer0_extensions
 
 	;; Use only RTS from MCTL; RTS is active-low at the pin.
 	ld a, UART1_MCTL_RTS          ;; DTR stays off.
@@ -290,17 +307,53 @@ __bios_timer0_isr:
 	push bc
 	push de
 	push hl
+	push ix
+	push iy
+	ld a, 1
+	ld (bios_timer0_isr_active), a
+__bios_timer0_user_extensions:
+	ld a, (bios_timer0_extensions_present)
+	and 1
+	jr nz, __bios_timer0_extension_setup
+__bios_timer0_after_extensions:
 	in0 a, (TMR0_CTL)             ;; Reading CTL clears the timer IRQ flag.
 	ld hl, (bios_uptime_10ms)
 	inc hl
 	ld (bios_uptime_10ms), hl
 	call __bios_uart1_rx_drain
+	xor a
+	ld (bios_timer0_isr_active), a
+	pop iy
+	pop ix
 	pop hl
 	pop de
 	pop bc
 	pop af
 	ei
 	reti.l
+
+;; Push the continuation and each occupied slot. The last occupied slot is
+;; first in the chain; each handler exits with POP HL / JP (HL).
+__bios_timer0_extension_setup:
+	ld hl, __bios_timer0_after_extensions
+	push hl
+	ld ix, bios_timer0_extensions
+	ld b, BIOS_TIMER0_EXTENSION_SLOTS
+__bios_timer0_extension_scan:
+	ld hl, (ix+0)
+	ld de, BIOS_ZERO
+	or a
+	sbc hl, de
+	jr z, __bios_timer0_extension_next
+	ld hl, (ix+0)
+	push hl
+__bios_timer0_extension_next:
+	inc ix
+	inc ix
+	inc ix
+	djnz __bios_timer0_extension_scan
+	pop hl
+	jp (hl)
 
 ;; ISR continuation: the dispatcher has saved the interrupted register set.
 ;; A THRE interrupt means the hardware TX FIFO is empty. Fill up to all 16
@@ -439,6 +492,132 @@ __bios_api_bad_operation:
 	or a
 	ret
 
+;; Register/remove PRT0 extensions. B is the IVECT value, HL the handler.
+;; Duplicate addresses occupy separate slots; removal clears all matches.
+bios_vector_add:
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+	ld a, i
+	push af
+	di
+	ld a, b
+	cp TIMER0_IVECT
+	jp nz, __bios_vector_unsupported
+	ld (bios_vector_request_handler), hl
+	ld de, BIOS_ZERO
+	or a
+	sbc hl, de
+	jp z, __bios_vector_unsupported
+	ld ix, bios_timer0_extensions
+	ld b, BIOS_TIMER0_EXTENSION_SLOTS
+__bios_vector_add_scan:
+	ld a, (ix+0)
+	or (ix+1)
+	or (ix+2)
+	jr z, __bios_vector_add_slot
+	inc ix
+	inc ix
+	inc ix
+	djnz __bios_vector_add_scan
+	ld a, BIOS_STATUS_VECTOR_FULL
+	jp __bios_vector_operation_finish
+__bios_vector_add_slot:
+	ld hl, (bios_vector_request_handler)
+	ld (ix+0), hl
+	ld a, 1
+	ld (bios_timer0_extensions_present), a
+	xor a
+	jp __bios_vector_operation_finish
+
+bios_vector_remove:
+	push bc
+	push de
+	push hl
+	push ix
+	push iy
+	ld a, i
+	push af
+	di
+	ld a, b
+	cp TIMER0_IVECT
+	jp nz, __bios_vector_unsupported
+	ld (bios_vector_request_handler), hl
+	ld de, BIOS_ZERO
+	or a
+	sbc hl, de
+	jp z, __bios_vector_missing
+	ld ix, bios_timer0_extensions
+	ld b, BIOS_TIMER0_EXTENSION_SLOTS
+	ld c, 0
+__bios_vector_remove_scan:
+	ld a, (bios_vector_request_handler+0)
+	cp (ix+0)
+	jr nz, __bios_vector_remove_next
+	ld a, (bios_vector_request_handler+1)
+	cp (ix+1)
+	jr nz, __bios_vector_remove_next
+	ld a, (bios_vector_request_handler+2)
+	cp (ix+2)
+	jr nz, __bios_vector_remove_next
+	xor a
+	ld (ix+0), a
+	ld (ix+1), a
+	ld (ix+2), a
+	ld c, 1
+__bios_vector_remove_next:
+	inc ix
+	inc ix
+	inc ix
+	djnz __bios_vector_remove_scan
+	ld ix, bios_timer0_extensions
+	ld b, BIOS_TIMER0_EXTENSION_SLOTS
+__bios_vector_remove_check_empty:
+	ld a, (ix+0)
+	or (ix+1)
+	or (ix+2)
+	jr nz, __bios_vector_remove_done
+	inc ix
+	inc ix
+	inc ix
+	djnz __bios_vector_remove_check_empty
+	xor a
+	ld (bios_timer0_extensions_present), a
+__bios_vector_remove_done:
+	ld a, c
+	or a
+	jp z, __bios_vector_missing
+	xor a
+	jp __bios_vector_operation_finish
+
+__bios_vector_unsupported:
+	ld a, BIOS_STATUS_VECTOR_UNSUPPORTED
+	jp __bios_vector_operation_finish
+__bios_vector_missing:
+	ld a, BIOS_STATUS_VECTOR_NOT_FOUND
+__bios_vector_operation_finish:
+	ld (bios_vector_op_status), a
+	ld a, (bios_timer0_isr_active)
+	or a
+	jp nz, __bios_vector_restore_without_ei
+	pop af
+	jp po, __bios_vector_restore_registers
+	ei
+	jp __bios_vector_restore_registers
+__bios_vector_restore_without_ei:
+	pop af
+__bios_vector_restore_registers:
+	pop iy
+	pop ix
+	pop hl
+	pop de
+	pop bc
+	ld a, (bios_vector_op_status)
+	or a
+	ret
+
 ;; Four-byte entries hold 24-bit target addresses plus one unused byte.
 bios_api_jump_table:
 	.long io_putchar
@@ -452,6 +631,8 @@ bios_api_jump_table:
 	.long bios_wait
 	.long bios_halt
 	.long __bios_api_call_hl
+	.long bios_vector_add
+	.long bios_vector_remove
 __bios_api_call_hl:
 	jp (hl)
 
@@ -608,7 +789,7 @@ bios_xmodem_wp:             .ds 3, 0
 bios_xmodem_remaining:      .ds 3, 0
 bios_xmodem_retry_armed:    .db 0
 bios_xmodem_start_flag:     .db 0
-bios_timer0_saved_vector:   .ds 2, 0
+bios_timer0_isr_active:     .db 0
 bios_xmodem_expected:       .db 0
 bios_xmodem_have_block:     .db 0
 bios_xmodem_block:          .db 0
@@ -619,8 +800,12 @@ bios_xmodem_data_count:     .db 0
 bios_xmodem_byte:           .db 0
 bios_xmodem_received_crc_hi: .db 0
 bios_xmodem_received_crc_lo: .db 0
-	.org 0xFC29
-bios_nread_dest:             .ds 3, 0
+	.org 0xFC27
+bios_nread_dest:              .ds 3, 0
+bios_timer0_extensions_present:.db 0
+bios_timer0_extensions:       .ds 24, 0
+bios_vector_op_status:        .db 0
+bios_vector_request_handler: .ds 3, 0
 
 	.org 0xFD00
 bios_rs_ring:
@@ -696,6 +881,8 @@ bios_stack:
 	.set XMODEM_RETRY_SEND_THRESHOLD, 200
 	.set XMODEM_STATUS_CANCELLED, 1
 	.set XMODEM_STATUS_ERROR, 2
+	.set TIMER0_IVECT, 0x0A
+	.set BIOS_TIMER0_EXTENSION_SLOTS, 8
 	.set TMR0_RELOAD_LOW_10MS, 0x00
 	.set TMR0_RELOAD_HIGH_10MS, 0xB4
 	.set TMR0_CTL_10MS, 0x53

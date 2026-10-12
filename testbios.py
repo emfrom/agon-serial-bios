@@ -233,7 +233,7 @@ def main() -> int:
             wait_start = harness.wait_for(b"TESTBIOS:WAIT_BEGIN")
             wait_end = harness.wait_for(b"TESTBIOS:WAIT_END")
             assert wait_end - wait_start >= 0.07, f"WAIT ran too quickly: {wait_end - wait_start:.3f}s"
-            for marker in (b"PASS:CALL_HL", b"PASS:CALL_HL_SECOND", b"PASS:BAD_OPERATION", b"PASS:EMPTY_AND_ZERO_NREAD"):
+            for marker in (b"PASS:CALL_HL", b"PASS:CALL_HL_SECOND", b"PASS:BAD_OPERATION", b"PASS:EMPTY_AND_ZERO_NREAD", b"PASS:VECTOR_EXTENSIONS"):
                 harness.wait_for(marker)
 
             harness.wait_for(b"TESTBIOS:GETCHAR_READY")

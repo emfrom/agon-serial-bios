@@ -43,6 +43,8 @@ for client code.
 | `08h` | `WAIT` | — | Busy-wait for approximately 50 ms |
 | `09h` | `HALT` | — | Enter interrupt-enabled idle loop; does not return |
 | `0Ah` | `CALL_HL` | `HL` = function pointer | Tail-call the function through the RST return frame |
+| `0Bh` | `VECTOR_ADD` | `B` = IVECT, `HL` = handler | Register a PRT0 extension; status in `A` |
+| `0Ch` | `VECTOR_REMOVE` | `B` = IVECT, `HL` = handler | Unregister a PRT0 extension; status in `A` |
 
 Unknown operation values return with `A = 0FFh`.
 
@@ -89,10 +91,11 @@ frame only when the entire 128-byte payload fits both the remaining capacity
 and physical SRAM; otherwise it sends CAN and returns an error without writing
 that frame. `BC` is preserved. Returns `A = 0` on successful EOT, `A = 1` on
 cancellation, and `A = 2` on an invalid destination, insufficient capacity,
-or receive error. `DE` and `HL` are preserved. The BIOS does not preserve `IX` or
-`IY`; callers must save them if needed. The receive operation temporarily uses
-PRT0 for handshake and FIFO service and restores the previous PRT0 vector before
-returning. CRC is CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`,
+receive error, or when no PRT0 extension slot is available. `DE` and `HL` are
+preserved. The BIOS does not preserve `IX` or `IY`; callers must save them if
+needed. The receive operation registers its handshake hook through
+`VECTOR_ADD` and removes it through `VECTOR_REMOVE`; it never replaces the PRT0
+IVT entry. CRC is CRC-16/XMODEM (polynomial `0x1021`, initial value `0x0000`,
 MSB first, no final XOR).
 
 Only frame payload bytes are written; CRC bytes are checked but not stored. Each
@@ -132,3 +135,22 @@ to the instruction after `RST 10h`. The function pointer must refer to
 executable memory and the target must follow the caller's expected eZ80 calling
 convention. Other arguments, such as `BC` or `DE`, are available to the target;
 `HL` is occupied by the function pointer at dispatch time.
+
+### `0Bh` / `0Ch` — `VECTOR_ADD` / `VECTOR_REMOVE`
+
+Pass the peripheral `IVECT` value in `B` and the 24-bit handler address in
+`HL`. The initial implementation supports only PRT0 (`IVECT=0Ah`) with eight
+independent slots. `A=0` means success; `A=1` means unsupported vector or a
+null add handler, `A=2` means all slots are occupied, and `A=3` means a remove
+found no matching handler. Duplicate addresses may be added; one remove clears
+all occurrences. `BC`, `DE`, `HL`, `IX`, and `IY` are preserved. Carry is
+clear on return. Registry changes are atomic;
+a change made during an active PRT0 chain affects the next interrupt, not the
+chain already in progress.
+
+Handlers are tail-chained, not called through `CALL_HL` (`0Ah`). Occupied
+slots run in reverse slot order. The PRT0 ISR protects `AF`, `BC`, `DE`, `HL`,
+`IX`, and `IY` for the chain.
+A handler must keep the stack balanced and finish with `pop hl` / `jp (hl)` to
+jump to the next handler or back to the ISR. It must not execute `EI` or
+terminate with `RET` / `RETI`; the BIOS ISR performs the final `RETI.L`.

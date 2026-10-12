@@ -1,20 +1,9 @@
 ;; UART1 IO API and XMODEM-CRC receiver. Included by EZ80BIOS.s in the
 ;; shared BIOS section so internal symbols and absolute layout stay unified.
 
-__io_xmodem_restore_timer_vector:
-	push af
-	ld a, (bios_timer0_saved_vector)
-	ld (bios_timer0_vector), a
-	ld a, (bios_timer0_saved_vector+1)
-	ld (bios_timer0_vector+1), a
-	pop af
-	ret
-
-;; Temporary PRT0 handler during XMODEM startup. It never returns directly
-;; from the interrupt: after peeking/handshake work it restores registers and
-;; tail-jumps to the regular timer ISR, which performs RETI.L.
+;; XMODEM startup handler registered through VECTOR_ADD. The timer ISR saves
+;; AF/BC/DE/HL and IX/IY; this handler returns via POP HL / JP (HL), never RETI.
 __io_xmodem_start:
-	push af
 __io_xmodem_start_scan:
 	call io_peek
 	jr c, __io_xmodem_start_retry
@@ -50,12 +39,15 @@ __io_xmodem_start_arm_retry:
 	jr __io_xmodem_start_resume
 
 __io_xmodem_start_detected:
-	call __io_xmodem_restore_timer_vector
+	ld b, TIMER0_IVECT
+	ld hl, __io_xmodem_start
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
 	ld a, 1
 	ld (bios_xmodem_start_flag), a
 __io_xmodem_start_resume:
-	pop af
-	jp __bios_timer0_isr
+	pop hl
+	jp (hl)
 
 
 ;; API: C=byte to enqueue. Returns carry set if ts is full; otherwise clear.
@@ -229,11 +221,9 @@ io_puts_done:
 	ret
 
 
-;; Install the temporary PRT0 vector and request XMODEM-CRC until a start
-;; control byte is visible in rs. The ISR discards unrelated bytes but leaves
-;; SOH/CAN/EOT queued for the receiver.
+;; Register the startup handler through the public API, then request XMODEM-CRC.
+;; The hook discards unrelated bytes but leaves SOH/CAN/EOT queued.
 __io_xmodem_wait_for_start:
-	push af
 	push hl
 	xor a
 	ld (bios_xmodem_start_flag), a
@@ -244,19 +234,12 @@ __io_xmodem_wait_for_start:
 	inc a
 __io_xmodem_start_phase_ready:
 	ld (bios_xmodem_retry_armed), a
-
-	;; Save and replace the 16-bit PRT0 vector atomically.
-	di
-	ld a, (bios_timer0_vector)
-	ld (bios_timer0_saved_vector), a
-	ld a, (bios_timer0_vector+1)
-	ld (bios_timer0_saved_vector+1), a
+	ld b, TIMER0_IVECT
 	ld hl, __io_xmodem_start
-	ld a, l
-	ld (bios_timer0_vector), a
-	ld a, h
-	ld (bios_timer0_vector+1), a
-	ei
+	ld a, BIOS_OP_VECTOR_ADD
+	rst 0x10
+	or a
+	jr nz, __io_xmodem_register_failed
 	ld a, XMODEM_CRC_REQUEST
 	ld c, a
 	call io_putchar
@@ -271,7 +254,10 @@ __io_xmodem_flag_wait:
 __io_xmodem_flag_ready:
 	ei
 	pop hl
-	pop af
+	xor a
+	ret
+__io_xmodem_register_failed:
+	pop hl
 	ret
 
 ;; Receive XMODEM-CRC frames into external RAM. BC is the maximum payload
@@ -304,6 +290,8 @@ io_xmodem_rx:
 	ld (bios_xmodem_have_block), a
 
 	call __io_xmodem_wait_for_start
+	or a
+	jp nz, __io_xmodem_rx_done
 __io_xmodem_wait_first_byte:
 	call io_getchar
 	cp XMODEM_SOH
@@ -484,12 +472,13 @@ __io_xmodem_abort:
 	ld a, XMODEM_STATUS_ERROR
 	jp __io_xmodem_rx_done
 
-;; Always put the caller's timer vector back before returning from the API.
+;; Remove the handshake handler on every exit, preserving the result.
 __io_xmodem_rx_done:
 	push af
-	di
-	call __io_xmodem_restore_timer_vector
-	ei
+	ld b, TIMER0_IVECT
+	ld hl, __io_xmodem_start
+	ld a, BIOS_OP_VECTOR_REMOVE
+	rst 0x10
 	pop af
 	pop hl
 	pop de
@@ -497,8 +486,5 @@ __io_xmodem_rx_done:
 	ret
 __io_xmodem_rx_bad_start:
 	ld a, XMODEM_STATUS_ERROR
-	pop hl
-	pop de
-	pop bc
-	ret
+	jp __io_xmodem_rx_done
 
