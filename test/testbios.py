@@ -36,7 +36,7 @@ class Harness:
             emulator_link = self.bridge_directory / "emulator"
             terminal_link = self.bridge_directory / "terminal"
             self.bridge_size_file = self.bridge_directory / "screen-size"
-            self.bridge_size_file.write_text("24 80\\n")
+            self.bridge_size_file.write_text("24 80\n")
             self.bridge_process = subprocess.Popen(
                 [sys.executable, str(ROOT / "tools/ansi_uart_bridge.py"),
                  "--emulator-link", str(emulator_link),
