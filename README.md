@@ -198,9 +198,10 @@ initial program load and the suite's XMODEM receive test. It also verifies
 eight chained PRT0 slots, duplicate registration, full-table rejection,
 remove-all behavior, and stopping callbacks after removal. The memory layout
 check is `python3 test/testbios_layout.py`; `python3 test/test_uart_bridge.py`
-checks the serial/terminal bridge; `python3 test/test_run_script.py` verifies the
-Minicom upload directory and terminal-size handoff; and `python3 test/testxwasd.py`
-exercises the WASD example through the emulator, including the IVT-overlay startup path.
+checks the serial/terminal bridge; `python3 test/test_run_script.py` checks the
+patched-emulator version preflight, firmware selection, Minicom upload directory,
+and terminal-size handoff; and `python3 test/testxwasd.py` exercises the WASD
+example through the emulator, including the IVT-overlay startup path.
 
 ## XMODEM-CRC receive
 
