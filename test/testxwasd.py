@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from testbios import Harness  # noqa: E402
+from testbios import Harness, verify_patched_emulator  # noqa: E402
 
 WAITING = b"Waiting for XMODEM at 0x010000"
 LOAD_COMPLETE = b"Load complete"
@@ -84,6 +84,10 @@ def main() -> int:
         parser.error("fab-agon-emulator not found; pass --emulator PATH")
     if shutil.which("sx") is None:
         parser.error("sx (from lrzsz) is required")
+    try:
+        verify_patched_emulator(args.emulator)
+    except RuntimeError as error:
+        parser.error(str(error))
 
     build()
     firmware: list[str] = []

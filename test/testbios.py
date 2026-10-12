@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import pty
+import re
 import shutil
 import subprocess
 import sys
@@ -227,6 +228,35 @@ class Harness:
             subprocess.run(["rm", "-rf", "--", str(self.bridge_directory)], check=False)
 
 
+def verify_patched_emulator(emulator: str) -> None:
+    download_url = "https://github.com/emfrom/fab-agon-emulator/releases"
+    try:
+        version = subprocess.run(
+            [emulator, "--version", "--no-audio"],
+            env={**os.environ, "SDL_VIDEODRIVER": "dummy"},
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            "emulator --version timed out after 3 seconds; install our patched "
+            f"Fab Agon Emulator: {download_url}"
+        ) from error
+    except OSError as error:
+        raise RuntimeError(f"could not run emulator {emulator!r}: {error}") from error
+
+    output = version.stdout + version.stderr
+    if version.returncode != 0 or not re.search(r"empatch-[0-9a-fA-F]{6}", output):
+        detail = f" Emulator response: {output.strip()}" if output.strip() else ""
+        raise RuntimeError(
+            "the BIOS tests require our patched Fab Agon Emulator "
+            f"(version must include empatch-<6 hex digits>).{detail} "
+            f"Download: {download_url}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--emulator", default=shutil.which("fab-agon-emulator"),
@@ -240,6 +270,11 @@ def main() -> int:
         parser.error("fab-agon-emulator not found; pass --emulator PATH")
     if shutil.which("sx") is None:
         parser.error("sx (from lrzsz) is required")
+
+    try:
+        verify_patched_emulator(args.emulator)
+    except RuntimeError as error:
+        parser.error(str(error))
 
     build_env = {**os.environ, "PATH": f"{ROOT.parent.parent / 'bin'}:{os.environ.get('PATH', '')}"}
     build = subprocess.run([str(ROOT / "build.sh")], cwd=ROOT, env=build_env, check=False)
