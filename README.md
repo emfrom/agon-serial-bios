@@ -78,9 +78,9 @@ It requests the terminal dimensions using xterm's `CSI 18 t`, places an `X` at
 the center, and moves it with `w`, `a`, `s`, and `d`. Ctrl-C, Ctrl-D, Space, or
 Return soft-restarts the BIOS; other input is ignored.
 
-The UART1 end-to-end BIOS smoke test reached the BIOS startup output over the
-serial link. BIOS output uses CRLF so terminal emulators such as Minicom return
-to the left margin on each new line.
+The emulator-backed tests exercise BIOS startup, the RST 10h API, XMODEM
+transfers, and the terminal-sized WASD example. BIOS output uses CRLF so
+terminal emulators such as Minicom return to the left margin on each new line.
 
 ## eZ80 interrupt and memory references
 
