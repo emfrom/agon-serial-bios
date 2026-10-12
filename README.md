@@ -18,8 +18,9 @@ and `sdcard/` are ignored by Git.
 
 ## Run
 
-Install the patched [Fab Agon Emulator](https://github.com/emfrom/fab-agon-emulator/releases),
-Minicom, Python 3, `timeout`, and one supported terminal (`st`, `ghosty`,
+Install our [patched Fab Agon Emulator](https://github.com/emfrom/fab-agon-emulator)
+from its [releases page](https://github.com/emfrom/fab-agon-emulator/releases),
+plus Minicom, Python 3, `timeout`, and one supported terminal (`st`, `ghosty`,
 `ghostty`, `alacritty`, or `xterm`). The launcher checks the emulator's
 `--version` once with a three-second timeout; its version must include
 `empatch-` followed by at least six hexadecimal digits.
