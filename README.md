@@ -1,7 +1,7 @@
 # Agon Serial BIOS
 
 A UART1 BIOS for the Agon eZ80. It provides an interrupt-driven serial API,
-XMODEM-CRC uploads, and a small WASD terminal example.
+XMODEM-CRC uploads, and a small WASD terminal example "game".
 
 ## Build
 
